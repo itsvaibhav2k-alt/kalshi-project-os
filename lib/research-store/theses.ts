@@ -203,6 +203,19 @@ export function updateThesis(
 }
 
 /**
+ * Returns a thesis by id, regardless of status or ticker. Callers enforcing a
+ * route's ticker scope must compare marketTicker themselves.
+ *
+ * @param db - Open research-store database handle.
+ * @param thesisId - Thesis id to look up.
+ * @returns The thesis record, or null when the id does not exist.
+ */
+export function getThesisById(db: Database.Database, thesisId: string): ThesisRecord | null {
+  const row = getThesisRow(db, thesisId);
+  return row === undefined ? null : rowToRecord(row);
+}
+
+/**
  * Returns the active thesis for a market: the latest non-archived row,
  * ordered by created_at DESC with rowid DESC as the tiebreak.
  *
