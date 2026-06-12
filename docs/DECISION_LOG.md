@@ -40,3 +40,13 @@ YYYY-MM-DD — Decision — Reason — Impact
 2026-06-11 — Restrict Phase 1 to read-only Kalshi market ingestion and scanner — Tight scope prevents unsafe scope creep and keeps the first implementation phase auditable — Phase 1 excludes paper trading, wallet intelligence, execution, auth, trading credentials, and AI recommendations; those arrive in later phases per `docs/ROADMAP.md`.
 
 2026-06-11 — Adopt the "printed risk memo" anti-dopamine UI direction as the visual north star — Hermes reviewed and approved the static mockups (`docs/mockups/training-wheels-dashboard.html` States A and B); muted verdicts, calm SKIP, no reward styling, and explicit no-action affordances reinforce the safety model — All future UI follows `.claude/rules/ui-design.md`; no generic Tailwind/SaaS redesign; PAPER_TRADE stays visually muted; real-trading affordances render only as disabled/locked.
+
+2026-06-11 — Phase 1 approved and implemented: read-only Kalshi ingestion + scanner — Human approved the phase via /goal and approved the implementation plan before any code was written — App code now exists (Next.js app, Kalshi connector, scanner UI); scope stayed read-only market data with no trading, auth, paper-trading, or AI-recommendation code.
+
+2026-06-11 — Manual minimal Next.js setup at repo root instead of create-next-app — create-next-app refuses or risks clobbering a non-empty repo; manual setup keeps full control over what lands in the tree — Phase 0 files (docs/, .claude/, CLAUDE.md, mockups) untouched; only the minimal app scaffolding was added.
+
+2026-06-11 — Plain CSS ported from the approved mockups instead of Tailwind — Prevents generic-SaaS drift and preserves the approved "printed risk memo" direction per docs/UI_NORTH_STAR.md — Styling lives in plain CSS derived from docs/mockups; no Tailwind dependency or utility-class redesign.
+
+2026-06-11 — No risk-verdict display in Phase 1; factual data flags only with a fixed seven-term vocabulary — ROADMAP excludes verdicts until Phase 5 and the stricter rule wins — UI renders only the flags "wide spread", "thin open interest", "zero volume", "missing rules", "missing settlement source", "likely junk / parlay", plus "not evaluated"; no SKIP/WATCH/PAPER_TRADE strings appear in the app.
+
+2026-06-11 — Fixture fallback policy: API labels source 'live' or 'fixture' and the UI banners fixture data — Fixture data must never be mistaken for live market data, and tests must be deterministic — API responses carry source 'live' | 'fixture'; UI shows "FIXTURE — NOT LIVE DATA" when serving fixtures; automated tests are network-free and run only against checked-in fixtures.

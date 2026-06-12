@@ -28,6 +28,24 @@ covers versus what stays platform-specific.
   bought this market" on Kalshi. Wallet intelligence is therefore not a Kalshi feature.
 - V1 connector is read-only market data. No trading API keys, no order endpoints.
 
+## Kalshi API findings (Phase 1, 2026-06-11)
+
+Observed while building the Phase 1 connector:
+
+- Public market data requires no API key. All Phase 1 ingestion is unauthenticated
+  read-only access; no credentials exist anywhere in the repo.
+- Prices come back as dollar strings (e.g. `yes_bid_dollars`) and volume/open interest
+  as fixed-point strings (`volume_fp`, `open_interest_fp`). The connector parses these
+  into normalized numeric fields.
+- Market payloads do not include a category. Category comes from
+  `/events?with_nested_markets=true`, so the connector joins events to markets.
+- Market payloads do not include an explicit settlement-source field. Such markets are
+  flagged "missing settlement source" in the UI.
+- The orderbook endpoint is not used in Phase 1. Its auth requirement is unverified —
+  TODO: verify before Phase 2 planning.
+- Multivariate parlay markets (markets carrying `mve_` fields, provisional status,
+  zero volume) are filtered out as junk by the scanner.
+
 ## Polymarket (later)
 
 - History: in 2022 the CFTC penalized Polymarket for offering event-based binary

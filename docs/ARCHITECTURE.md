@@ -1,6 +1,6 @@
 # ARCHITECTURE.md
 
-Status: Phase 0 planning document. Defines module boundaries for future phases.
+Status: Phase 0 planning document, updated with the Phase 1 as-built record.
 Date: 2026-06-11
 
 Core principle: **LLM recommends. Rules permit. Human approves. Execution obeys.**
@@ -9,10 +9,34 @@ Kalshi Project OS is Kalshi-first, event-market-native, and Polymarket-ready. Th
 architecture is platform-agnostic: shared engines operate on normalized data; only
 connectors and platform-specific signal modules know platform details.
 
-## Planned directory layout (NOT yet created)
+## Phase 1 as built (2026-06-11)
 
-None of these directories exist yet. **Do not create them before Phase 1 is explicitly
-approved by the human.** This file is the plan, not a scaffold instruction.
+Phase 1 (read-only Kalshi ingestion + scanner) is implemented. Actual structure:
+
+| Path | Contents |
+|---|---|
+| `app/` | Next.js App Router: `layout.tsx`, `page.tsx`, `globals.css` (plain CSS from approved mockups) |
+| `app/api/markets/` | API route: live Kalshi fetch with labeled fixture fallback (`source: 'live' \| 'fixture'`) |
+| `components/layout/` | `Masthead`, `StatusStrip`, `PipelineRow`, `SafetyFooter` (includes static "REAL TRADING — DISABLED" panel) |
+| `components/scanner/` | `FilterBar`, `ScannerTable` |
+| `components/market-detail/` | `DetailPanel` |
+| `lib/platforms/kalshi/` | `client.ts`, `connector.ts`, `normalize.ts`, `types.ts` — read-only, no credentials |
+| `lib/markets/` | Normalized market `types.ts`, `filters.ts` (factual data flags only) |
+| `lib/utils/` | `format.ts` |
+| `tests/` | Vitest unit tests: client, normalize, filters, fixture parsing — network-free |
+| `tests/fixtures/` | Checked-in Kalshi markets/events JSON used for tests and fixture fallback |
+
+Not built yet (future phases per the plan below): `lib/risk/`, `lib/paper/`,
+`lib/research/`, `lib/strategies/`, `lib/wallet-intelligence/`, `lib/backtesting/`,
+`lib/simulation/`, `lib/relationship-graph/`, `lib/telemetry/`, `lib/calibration/`,
+`lib/db/`, `scripts/`. Phase 1 renders no verdicts; the UI shows factual flags plus
+"not evaluated".
+
+## Planned directory layout (future phases)
+
+The table below is the Phase 0 plan for later phases. Directories not listed in the
+"as built" section above still do not exist and are not created before their phase is
+explicitly approved by the human.
 
 | Path | Responsibility | Notes |
 |---|---|---|

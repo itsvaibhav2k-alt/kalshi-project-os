@@ -8,7 +8,42 @@ An AI-assisted event-market research, paper-trading, risk-control, wallet-intell
 - No claims of profitability. Default recommendation is SKIP unless strict checks pass.
 - Core principle: **LLM recommends. Rules permit. Human approves. Execution obeys.**
 
-Phase 0 contains documentation only — no app code is scaffolded yet.
+**Phase 1 complete (2026-06-11): read-only Kalshi scanner.** The app ingests public
+Kalshi market data and renders a scanner with factual data flags. No paper trading,
+no risk verdicts, no AI recommendations yet — those are later phases per
+[docs/ROADMAP.md](./docs/ROADMAP.md). Real trading remains locked; the UI shows a
+static "REAL TRADING — DISABLED" status panel only.
+
+## Local Setup
+
+```bash
+npm install
+```
+
+## Run
+
+```bash
+npm run dev
+```
+
+Open http://localhost:3000.
+
+## Test
+
+```bash
+npm test
+```
+
+Automated tests never call the network; they run against checked-in fixtures in
+`tests/fixtures/`.
+
+## Data Source Behavior
+
+- The app reads the public Kalshi market-data API. No API key, no authentication,
+  no credentials anywhere in the repo.
+- If the live API call fails, the API route serves checked-in fixture data instead.
+  Fixture responses are labeled `source: 'fixture'` and the UI shows a
+  "FIXTURE — NOT LIVE DATA" banner. Fixture data is never presented as live.
 
 ## Start Here
 
