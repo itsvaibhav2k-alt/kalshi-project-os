@@ -450,6 +450,79 @@ button.fchip { cursor: pointer; appearance: none; }
 .check-mark.warn { color: var(--paper-trade); }
 .check-mark.na   { color: var(--ink-faint); }
 
+/* ---------- research editor forms (Phase 3) ----------
+   Human research entry only — extends the .search-input/.refresh-btn idiom.
+   Mockup palette tokens only; nothing here is a trading control. */
+.memo-form {
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 2px;
+  background: var(--paper-deep);
+}
+.memo-form > .label { display: block; margin-bottom: 6px; }
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.field-row { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.field-grid .field-row { margin-bottom: 0; }
+.memo-input,
+.memo-select {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  padding: 4px 9px 3px;
+}
+.memo-select { appearance: none; cursor: pointer; }
+.memo-textarea {
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  padding: 5px 9px;
+  resize: vertical;
+}
+.memo-input:focus,
+.memo-select:focus,
+.memo-textarea:focus { outline: none; border-color: var(--ink-soft); }
+.memo-input::placeholder,
+.memo-textarea::placeholder { color: var(--ink-faint); }
+.form-actions { display: flex; gap: 8px; align-items: baseline; margin-top: 2px; }
+.form-error {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--locked);
+  margin-top: 6px;
+}
+
+/* ---------- persisted source list (Phase 3) ---------- */
+.source-list { list-style: none; margin-top: 8px; }
+.source-item {
+  padding: 8px 0 9px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.source-item:last-child { border-bottom: none; }
+.source-title { font-size: 13.5px; margin-top: 5px; }
+.source-title .mono { font-size: 11px; color: var(--ink-soft); }
+.source-text { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+.source-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
 /* ---------- footer ---------- */
 footer {
   margin-top: 26px;

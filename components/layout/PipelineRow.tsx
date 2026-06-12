@@ -18,11 +18,11 @@ export interface PipelineRowProps {
 const FUTURE_STAGES: readonly string[] = ['05 Paper / Simulate', '06 Settle / Learn'];
 
 /**
- * The V1 pipeline row. Stages 01-04 carry real counts in Phase 2: scan,
- * deterministic understanding, research (not run — implied probability is
- * price math, never a research prediction), and risk evaluation with the
- * verdict breakdown. Stages 05-06 stay future phases, and Execute stays
- * cross-hatched and locked.
+ * The V1 pipeline row. Stages 01-04 carry real counts: scan, deterministic
+ * understanding, manual research backed by accepted persisted sources
+ * (implied probability is price math and never counts as research), and risk
+ * evaluation with the verdict breakdown. Stages 05-06 stay future phases,
+ * and Execute stays cross-hatched and locked.
  */
 export function PipelineRow({ counts, summary }: PipelineRowProps): ReactElement {
   return (
@@ -43,7 +43,7 @@ export function PipelineRow({ counts, summary }: PipelineRowProps): ReactElement
       <div className="stage">
         <span className="label">03 Research / Predict</span>
         <span className="count">{formatCount(summary.researchSourced)}</span>{' '}
-        <span className="sub">sourced · research not run</span>
+        <span className="sub">with accepted sources · manual research</span>
       </div>
       <div className="stage">
         <span className="label">04 Validate / Risk</span>

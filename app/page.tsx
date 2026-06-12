@@ -1,18 +1,18 @@
 'use client';
 
 /**
- * Phase 2 dashboard: read-only Kalshi market scanner with decision dossiers.
+ * Phase 3 dashboard: Kalshi market scanner with research-to-thesis dossiers.
  *
- * Fetches /api/markets on mount (plus a manual data-refresh control),
- * applies client-side search/category/status filters, derives the Phase 2
- * dossier (understanding, research not run, probability, deterministic risk
- * verdict) for the selected market, and composes the masthead, status strip,
- * pipeline row, scanner table, and dossier detail panel. One evaluation
- * timestamp per refresh (the fetch timestamp) keeps the derivations pure.
- * No trading controls exist anywhere on this page.
+ * Fetches /api/markets plus the bulk /api/research summary map on each
+ * refresh, and the full /api/research/[ticker] state when a market is
+ * selected and after every research mutation. Market data stays read-only;
+ * research and thesis records are the ONLY mutations in V1, and they are
+ * advisory inputs — the deterministic risk engine alone issues verdicts.
+ * One evaluation timestamp per refresh (the fetch timestamp) keeps the
+ * derivations pure. No trading controls exist anywhere on this page.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { Masthead } from '@/components/layout/Masthead';
@@ -20,11 +20,21 @@ import { PipelineRow } from '@/components/layout/PipelineRow';
 import { SafetyFooter } from '@/components/layout/SafetyFooter';
 import { StatusStrip } from '@/components/layout/StatusStrip';
 import { DetailPanel } from '@/components/market-detail/DetailPanel';
+import type { ResearchActions } from '@/components/market-detail/researchActions';
 import { FilterBar } from '@/components/scanner/FilterBar';
 import { ScannerTable } from '@/components/scanner/ScannerTable';
-import { buildMarketDossier, summarizeEvaluations } from '@/lib/dossier/buildMarketDossier';
+import {
+  buildMarketDossierWithResearch,
+  summarizeEvaluations,
+} from '@/lib/dossier/buildMarketDossier';
+import type { PersistedResearchSnapshot } from '@/lib/dossier/types';
 import { filterByCategory, filterByStatus, searchMarkets } from '@/lib/markets/filters';
 import type { MarketsResult, MarketStatus } from '@/lib/markets/types';
+import type {
+  ResearchStateResponse,
+  ResearchSummary,
+  ResearchSummaryMap,
+} from '@/lib/research-store/types';
 import { formatFreshness } from '@/lib/utils/format';
 
 const FRESHNESS_TICK_MS = 30_000;
@@ -43,6 +53,79 @@ function deriveCategories(result: MarketsResult | null): string[] {
   return [...unique].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Converts the per-ticker research state into the dossier snapshot DTO.
+ * Fair values flow only when the server-recomputed summary still vouches for
+ * them; full source records ride along for the selected market.
+ */
+function snapshotFromState(state: ResearchStateResponse): PersistedResearchSnapshot {
+  return {
+    acceptedSourceCount: state.summary.acceptedSourceCount,
+    briefState: state.brief === null ? 'not_run' : state.brief.state,
+    confidence: state.summary.researchConfidence,
+    fairLow:
+      state.summary.hasFairProbability && state.probabilityEstimate !== null
+        ? state.probabilityEstimate.low
+        : null,
+    fairMid:
+      state.summary.hasFairProbability && state.probabilityEstimate !== null
+        ? state.probabilityEstimate.mid
+        : null,
+    fairHigh:
+      state.summary.hasFairProbability && state.probabilityEstimate !== null
+        ? state.probabilityEstimate.high
+        : null,
+    hasReadyThesis: state.summary.hasReadyThesis,
+    sources: state.sources,
+  };
+}
+
+/**
+ * Converts one bulk research summary into the dossier snapshot DTO.
+ *
+ * Bulk summaries deliberately omit brief state and fair values, so this
+ * mapping stays conservative: a human-reviewed flag maps to that state,
+ * any other accepted-source research is treated as a draft brief (so the
+ * pipeline counts markets with accepted-source research), and the fair range
+ * stays null — a fair probability is never invented client-side, which means
+ * non-selected markets evaluate without one. The selected market always uses
+ * the full per-ticker snapshot instead.
+ */
+function snapshotFromSummary(summary: ResearchSummary): PersistedResearchSnapshot {
+  return {
+    acceptedSourceCount: summary.acceptedSourceCount,
+    briefState: summary.hasHumanReviewedBrief
+      ? 'human_reviewed'
+      : summary.acceptedSourceCount > 0
+        ? 'draft'
+        : 'not_run',
+    confidence: summary.researchConfidence,
+    fairLow: null,
+    fairMid: null,
+    fairHigh: null,
+    hasReadyThesis: summary.hasReadyThesis,
+  };
+}
+
+/** Extracts the calm error message from a research API failure response. */
+async function readResearchError(response: Response): Promise<string> {
+  try {
+    const data: unknown = await response.json();
+    if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+      const body = data as { error?: unknown; fieldErrors?: unknown };
+      if (typeof body.error === 'string') {
+        const fieldErrors = Array.isArray(body.fieldErrors)
+          ? body.fieldErrors.filter((item): item is string => typeof item === 'string')
+          : [];
+        return fieldErrors.length > 0 ? `${body.error} — ${fieldErrors.join('; ')}` : body.error;
+      }
+    }
+  } catch {
+    // Fall through to the generic status message below.
+  }
+  return `research API responded with HTTP ${response.status}`;
+}
+
 export default function HomePage(): ReactElement {
   const [result, setResult] = useState<MarketsResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -54,8 +137,30 @@ export default function HomePage(): ReactElement {
   const [statusFilter, setStatusFilter] = useState<MarketStatus | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const [researchSummaries, setResearchSummaries] = useState<ResearchSummaryMap>({});
+  const [researchBulkError, setResearchBulkError] = useState<string | null>(null);
+  const [selectedResearch, setSelectedResearch] = useState<ResearchStateResponse | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
+
+  const loadResearchSummaries = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch('/api/research');
+      if (!response.ok) {
+        throw new Error(await readResearchError(response));
+      }
+      const data = (await response.json()) as ResearchSummaryMap;
+      setResearchSummaries(data);
+      setResearchBulkError(null);
+    } catch (error: unknown) {
+      setResearchBulkError(
+        error instanceof Error ? error.message : 'Unexpected failure loading research summaries',
+      );
+    }
+  }, []);
+
   const loadMarkets = useCallback(async (): Promise<void> => {
     setIsLoading(true);
+    void loadResearchSummaries();
     try {
       const response = await fetch('/api/markets');
       if (!response.ok) {
@@ -72,7 +177,7 @@ export default function HomePage(): ReactElement {
       setIsLoading(false);
       setNowMs(Date.now());
     }
-  }, []);
+  }, [loadResearchSummaries]);
 
   useEffect(() => {
     void loadMarkets();
@@ -97,25 +202,164 @@ export default function HomePage(): ReactElement {
     () => allMarkets.find((market) => market.id === selectedId) ?? null,
     [allMarkets, selectedId],
   );
+  const selectedTicker = selectedMarket?.externalId ?? null;
+
+  // Guards against a slow response for a previously selected market landing
+  // after the user has already moved on to another one.
+  const selectedTickerRef = useRef<string | null>(null);
+  selectedTickerRef.current = selectedTicker;
+
+  const loadSelectedResearch = useCallback(async (ticker: string): Promise<void> => {
+    try {
+      const response = await fetch(`/api/research/${encodeURIComponent(ticker)}`);
+      if (!response.ok) {
+        throw new Error(await readResearchError(response));
+      }
+      const data = (await response.json()) as ResearchStateResponse;
+      if (selectedTickerRef.current !== ticker) {
+        return;
+      }
+      setSelectedResearch(data);
+      setResearchError(null);
+    } catch (error: unknown) {
+      if (selectedTickerRef.current !== ticker) {
+        return;
+      }
+      setSelectedResearch(null);
+      setResearchError(
+        error instanceof Error ? error.message : 'Unexpected failure loading research state',
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    setSelectedResearch(null);
+    setResearchError(null);
+    if (selectedTicker !== null) {
+      void loadSelectedResearch(selectedTicker);
+    }
+  }, [selectedTicker, loadSelectedResearch]);
+
+  const mutateResearch = useCallback(
+    async (
+      ticker: string,
+      path: string,
+      method: 'POST' | 'PATCH',
+      body: unknown,
+    ): Promise<string | null> => {
+      try {
+        const response = await fetch(`/api/research/${encodeURIComponent(ticker)}${path}`, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          return await readResearchError(response);
+        }
+        await loadSelectedResearch(ticker);
+        void loadResearchSummaries();
+        return null;
+      } catch (error: unknown) {
+        return error instanceof Error ? error.message : 'Unexpected research API failure';
+      }
+    },
+    [loadSelectedResearch, loadResearchSummaries],
+  );
+
+  const researchActions = useMemo<ResearchActions>(() => {
+    const requireTicker = (): string | null => selectedTickerRef.current;
+    return {
+      addSource: async (payload) => {
+        const ticker = requireTicker();
+        return ticker === null
+          ? 'no market is selected'
+          : mutateResearch(ticker, '/sources', 'POST', payload);
+      },
+      updateSource: async (sourceId, patch) => {
+        const ticker = requireTicker();
+        return ticker === null
+          ? 'no market is selected'
+          : mutateResearch(ticker, `/sources/${encodeURIComponent(sourceId)}`, 'PATCH', patch);
+      },
+      saveBrief: async (payload) => {
+        const ticker = requireTicker();
+        return ticker === null
+          ? 'no market is selected'
+          : mutateResearch(ticker, '/brief', 'POST', { ...payload, basis: 'manual' });
+      },
+      saveFairRange: async (payload) => {
+        const ticker = requireTicker();
+        return ticker === null
+          ? 'no market is selected'
+          : mutateResearch(ticker, '/probability', 'POST', {
+              ...payload,
+              basis: 'human_entered',
+              briefId: selectedResearch?.brief?.id ?? null,
+            });
+      },
+      saveThesis: async (payload, thesisId) => {
+        const ticker = requireTicker();
+        if (ticker === null) {
+          return 'no market is selected';
+        }
+        // Saving always re-links the currently accepted sources and the
+        // latest estimate; the server re-validates readiness against rows.
+        const acceptedIds = (selectedResearch?.sources ?? [])
+          .filter((source) => source.status === 'accepted')
+          .map((source) => source.id);
+        const body = {
+          ...payload,
+          sourceIds: acceptedIds,
+          probabilityEstimateId: selectedResearch?.probabilityEstimate?.id ?? null,
+        };
+        return thesisId === null
+          ? mutateResearch(ticker, '/thesis', 'POST', body)
+          : mutateResearch(ticker, `/thesis/${encodeURIComponent(thesisId)}`, 'PATCH', body);
+      },
+    };
+  }, [mutateResearch, selectedResearch]);
 
   // One evaluation timestamp per refresh: reuse the fetch timestamp so every
   // derived dossier in a refresh shares it and the pure engines stay clockless.
   const nowIso = result?.fetchedAt ?? null;
 
+  // Bulk summaries map conservatively (no fair values); the selected market's
+  // full per-ticker snapshot overrides its bulk entry.
+  const researchByTicker = useMemo(() => {
+    const map: Record<string, PersistedResearchSnapshot> = {};
+    for (const [ticker, summary] of Object.entries(researchSummaries)) {
+      map[ticker] = snapshotFromSummary(summary);
+    }
+    if (selectedResearch !== null) {
+      map[selectedResearch.ticker] = snapshotFromState(selectedResearch);
+    }
+    return map;
+  }, [researchSummaries, selectedResearch]);
+
   const evaluationSummary = useMemo(
     () =>
       nowIso === null
         ? { understood: 0, researchSourced: 0, evaluated: 0, skip: 0, watch: 0, paperTrade: 0 }
-        : summarizeEvaluations(allMarkets, nowIso),
-    [allMarkets, nowIso],
+        : summarizeEvaluations(allMarkets, nowIso, researchByTicker),
+    [allMarkets, nowIso, researchByTicker],
+  );
+
+  const selectedSnapshot = useMemo(
+    () =>
+      selectedResearch !== null &&
+      selectedTicker !== null &&
+      selectedResearch.ticker === selectedTicker
+        ? snapshotFromState(selectedResearch)
+        : null,
+    [selectedResearch, selectedTicker],
   );
 
   const selectedDossier = useMemo(
     () =>
       selectedMarket === null || nowIso === null
         ? null
-        : buildMarketDossier(selectedMarket, nowIso),
-    [selectedMarket, nowIso],
+        : buildMarketDossierWithResearch(selectedMarket, selectedSnapshot, nowIso),
+    [selectedMarket, selectedSnapshot, nowIso],
   );
 
   const freshnessText = result === null ? null : formatFreshness(result.fetchedAt, nowMs);
@@ -141,6 +385,9 @@ export default function HomePage(): ReactElement {
         />
       )}
       <PipelineRow counts={counts} summary={evaluationSummary} />
+      {researchBulkError === null ? null : (
+        <p className="loading-line">research summaries unavailable: {researchBulkError}</p>
+      )}
 
       <div className="grid-top">
         <section className="panel" aria-label="Market scanner">
@@ -197,9 +444,15 @@ export default function HomePage(): ReactElement {
           <section className="panel" aria-label="Market detail">
             <div className="panel-head">
               <h2>Market Detail</h2>
-              <span className="note">selected from scanner · read-only</span>
+              <span className="note">market data read-only · research notes editable</span>
             </div>
-            <DetailPanel dossier={selectedDossier} freshnessText={freshnessText} />
+            <DetailPanel
+              dossier={selectedDossier}
+              freshnessText={freshnessText}
+              research={selectedSnapshot === null ? null : selectedResearch}
+              researchError={researchError}
+              actions={researchActions}
+            />
           </section>
         </div>
       </div>
