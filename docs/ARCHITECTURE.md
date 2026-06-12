@@ -1,6 +1,6 @@
 # ARCHITECTURE.md
 
-Status: Phase 0 planning document, updated with the Phase 1 and Phase 2 as-built records.
+Status: Phase 0 planning document, updated with the Phase 1, Phase 2, and Phase 3 as-built records.
 Date: 2026-06-11
 
 Core principle: **LLM recommends. Rules permit. Human approves. Execution obeys.**
@@ -81,6 +81,52 @@ engine is unchanged.
 
 `lib/research-store/` supersedes the planned generic `lib/db/` entry below for the
 research/thesis domain; a broader persistence layer remains a future-phase decision.
+
+## Phase 3 as built (2026-06-11)
+
+Phase 3 implemented the research-to-thesis loop exactly within the approved
+boundaries above. Actual structure:
+
+| Path | Contents |
+|---|---|
+| `lib/research-store/` | `db.ts` (lazy open, WAL + busy_timeout, `globalThis` connection cache keyed by resolved data dir; the ONLY file that reads `KALSHI_DATA_DIR`), `schema.ts` (DDL strings with CHECK-constrained enums), `migrations.ts` (versioned, idempotent, ledger-backed via `schema_migrations`), `types.ts` (row/record shapes, DTOs, and the units convention stated once), `validation.ts` (payload, brief-state, fair-range, and `validateThesisReady` rules), `sources.ts`, `briefs.ts`, `probabilityEstimates.ts`, `theses.ts` (CRUD with server-authoritative counts and the ready-transition gate), `summary.ts` (recomputed per-ticker summary flags) |
+| `app/api/research/` | Bulk summary GET (`route.ts`), per-ticker GET, `POST sources` / `PATCH sources/[sourceId]`, `POST brief`, `POST probability`, `POST thesis` / `PATCH thesis/[thesisId]`, plus non-route helpers (`route-helpers.ts`, `[ticker]/thesis/payload.ts`) |
+| `lib/dossier/` (additions only) | `PersistedResearchSnapshot` / `PersistedSourceSnapshot` structural DTOs in `types.ts`, `mapResearchState.ts`, `buildMarketDossierWithResearch(market, snapshot \| null, nowIso)`; `summarizeEvaluations` gained an optional per-ticker snapshot map |
+| `components/market-detail/` (additions) | `SourcesPanel`, `ThesisPanel`, manual editors in `ResearchBriefPanel` / `ProbabilityPanel`, shared form DTOs in `researchActions.ts` |
+| `tests/` (additions) | `research-store-db`, `research-store-validation`, `research-store-crud`, `research-api`, `phase3-integration`, `safety-routes` |
+
+Dependency direction (enforced by tests and review):
+
+- `app/api/research/**` routes → `lib/research-store`. Routes are thin: one
+  injected timestamp per request, validation first, store calls second. No other
+  module imports `better-sqlite3` or touches the database.
+- `app/page.tsx` fetches `/api/research` (bulk summaries) and
+  `/api/research/[ticker]` (full state) over HTTP and converts the responses into
+  the structural snapshot DTO. **`lib/dossier` imports nothing from
+  `lib/research-store`** — persisted research crosses the boundary as plain JSON
+  data shaped like `PersistedResearchSnapshot`, mirroring the existing
+  `ResearchLike` precedent. The dossier purity scan (no fetch, no clock, no env)
+  still passes over every `lib/dossier` file.
+- **`lib/risk` imports nothing new and has zero changes.** Persisted research
+  reaches the engine only as already-mapped candidate fields through the
+  unchanged `RiskCandidate` shape.
+
+Behavioral notes:
+
+- Bulk summaries deliberately omit source lists and brief bodies; the snapshot
+  built from a bulk summary is conservative (fair values stay null, brief state
+  is inferred only as far as the flags allow). The selected market's full
+  per-ticker snapshot overrides its bulk entry, so the dossier on screen always
+  reflects real rows.
+- Summary flags (`hasReadyThesis`, `hasFairProbability`, `hasHumanReviewedBrief`)
+  are recomputed against current rows on every read — never echoed from stored
+  values — so a thesis whose linked source was later rejected decays back to
+  not-ready everywhere at once.
+- Route-aware safety tests (`tests/safety-routes.test.ts`) enumerate every
+  `app/api/**/route.ts` file: `/api/markets` exports GET only; `/api/research/**`
+  may export GET/POST/PATCH only; no PUT/DELETE anywhere; no mutations outside
+  `/api/research/**`; no route path contains trading/account/auth/wallet
+  segments. New routes are checked automatically.
 
 ## Planned directory layout (future phases)
 

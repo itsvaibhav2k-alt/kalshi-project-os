@@ -101,6 +101,46 @@ Each of these is a deterministic SKIP in the risk engine:
   (see `docs/TELEMETRY.md` and `docs/REFERENCE_SYSTEMS.md`).
 - Do not weaken safety rules because a viral dashboard shows live auto-execution.
 
+## (g) Local research mutations vs trading mutations (Phase 3, human-approved)
+
+Phase 3 introduced the first writes in the app. The distinction is sharp and
+binding:
+
+**Allowed local mutations (research and thesis records only):**
+
+- Saving evidence sources for a market (and accepting/rejecting them).
+- Saving a manual research brief.
+- Saving a human-entered fair-probability range with its rationale.
+- Saving a written thesis (draft, ready-for-risk, archived).
+
+These exist only under `/api/research/**` (GET/POST/PATCH; no PUT, no DELETE —
+rejected and archived records remain as an audit trail), write only to the
+local gitignored SQLite file, and are enforced by route-aware safety tests.
+
+**Forbidden trading mutations (do not exist anywhere, in any form):**
+
+- Placing orders, paper or real.
+- Creating real positions.
+- Connecting accounts of any kind.
+- Sending orders to any exchange.
+- Storing API keys or trading credentials.
+
+A research mutation records what a human thinks; a trading mutation would act
+on it. V1 permits only the former. No route, store function, or UI affordance
+may cross that line without the explicitly approved future execution phase.
+
+**Settlement-source policy (Phase 3):** persisted sources never automatically
+verify the settlement source, even when a human labels an accepted source
+`official_resolution_source` — that label is human-entered text, not
+verification of the resolution authority. The risk engine's `settlement_source`
+check is unchanged, so live markets may remain SKIP even with accepted sources,
+a human-reviewed brief, a fair-probability range, and a ready thesis. That is
+correct behavior. Settlement-source verification is a separate future module
+requiring explicit human approval.
+
+This section was added under the human-approved Phase 3 plan and is recorded in
+`docs/DECISION_LOG.md`.
+
 ---
 
 Any change to this file requires explicit human approval and a `DECISION_LOG.md` entry.

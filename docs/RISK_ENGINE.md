@@ -1,6 +1,7 @@
 # Risk Engine
 
-Status: Phase 0 specification, plus the Phase 2 implementation-status record below.
+Status: Phase 0 specification, plus the Phase 2 implementation-status and Phase 3
+input-status records below.
 Last updated: 2026-06-11
 
 The risk engine is the spine of Kalshi Project OS. It is deterministic: hard-coded rules decide
@@ -47,7 +48,7 @@ They may be changed only by an explicit human decision recorded in
 |---|---|---|
 | 1 | `paper_only_mode` | Informational pass: Training Wheels mode is active |
 | 2 | `resolution_clarity` | Clarity ≠ `clear` ⇒ fail |
-| 3 | `settlement_source` | Source missing OR unverified ⇒ fail (Phase 2 cannot verify sources, so live Kalshi markets always fail here — by design) |
+| 3 | `settlement_source` | Source missing OR unverified ⇒ fail (neither Phase 2 nor Phase 3 verifies settlement sources, so live Kalshi markets always fail here — by design; see the Phase 3 settlement-source policy below) |
 | 4 | `max_spread` | Spread null or > 10 cents ⇒ fail |
 | 5 | `volume` | Volume null or zero ⇒ fail |
 | 6 | `liquidity` | Volume < 1000 or open interest < 100 ⇒ warn (caps verdict at WATCH) |
@@ -78,6 +79,45 @@ On live Phase 2 data the verdict is essentially always SKIP (unverified settleme
 source + research not run + no fair probability), and the live app passes
 `hasWrittenThesis: false`, so PAPER_TRADE is unreachable live; WATCH and
 PAPER_TRADE paths are proven by synthetic test candidates.
+
+## Phase 3 status (2026-06-11): engine unchanged, inputs now real
+
+Phase 3 made **zero changes** to `lib/risk` — no new files, no edited lines, no
+new imports. The purity scan (no network, no LLM, no env, no clock) and every
+Phase 2 risk test pass byte-for-byte against the same engine. What changed is
+that several checks now receive real, persisted inputs instead of permanent
+empty defaults, mapped through `lib/dossier` composition:
+
+| Check | Phase 2 live input | Phase 3 live input |
+|---|---|---|
+| 7 `research_sources` | always empty (research `not_run`) | currently-accepted persisted sources for the market |
+| 8 `confidence` | always `low` | the human-reviewed brief's confidence (still `low` with zero accepted sources) |
+| 9 `fair_probability` / 10 `min_edge` | always null | the human-entered fair range, when backed by accepted sources |
+| 11 `written_thesis` | always `false` | `true` only for a currently-valid active `ready_for_risk` thesis |
+
+The engine remains the sole verdict authority: persisted rows are research
+inputs, never verdicts, and the store cannot reach the engine directly —
+`lib/risk` does not import `lib/research-store`, and `lib/dossier` passes only
+plain mapped data through the unchanged `RiskCandidate` shape.
+
+**Settlement-source policy (Phase 3, explicit).** Persisted sources never
+automatically verify the settlement source — not even an accepted source of kind
+`official_resolution_source`. That label is human-entered text about a source,
+not verification of the resolution authority. The `settlement_source` check
+(check 3) continues to read `understanding.settlementSourceStatus`, which
+Phase 3 does not change, so live markets may remain SKIP even with accepted
+sources, a human-reviewed brief, a fair-probability range, and a ready thesis.
+That outcome is correct behavior and is asserted by a dedicated integration
+test. Settlement-source verification is a separate future module requiring
+explicit human approval.
+
+**Edge convention (YES side).** Expected edge is YES-side signed:
+`fairMid − marketImpliedProbability`, a fraction in [0, 1] compared as cents
+(`edge × 100`) against `minEdgeCents`. A fair value below the market price
+yields a negative edge and therefore SKIP — it is not treated as a NO-side buy
+signal. The UI labels the value "Expected edge (YES side)". NO-side framing is
+deliberately deferred to the paper-trading phase, where side selection becomes a
+journaled decision rather than a display convention.
 
 ## Verdicts
 

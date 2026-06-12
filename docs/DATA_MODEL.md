@@ -1,6 +1,7 @@
 # DATA_MODEL.md
 
-Status: Phase 0 planning document. Documentation-only entity definitions.
+Status: Phase 0 planning document, updated with the Phase 2 in-memory types and the
+Phase 3 persisted research-store schema.
 Date: 2026-06-11
 
 Constraints:
@@ -31,6 +32,42 @@ without sourced research, and `RiskEvaluation.verdict` can only express
 `SKIP | WATCH | PAPER_TRADE` (the locked `REAL_TRADE_ELIGIBLE_LATER` is not
 representable at runtime). `PaperTrade`, `Outcome`, `CalibrationBin`, wallet
 entities, and all signal entities remain documentation-only.
+
+## Phase 3 persisted research-store schema (2026-06-11)
+
+Phase 3 introduced the first physical schema: a local SQLite database (file
+`.kalshi-os/kalshi-os.sqlite`, gitignored) owned exclusively by
+`lib/research-store/`. DDL lives in `lib/research-store/schema.ts`; versioned
+migrations in `migrations.ts`. Five tables exist:
+
+| Table | Purpose | Key columns |
+|---|---|---|
+| `schema_migrations` | Append-only migration ledger | `version` (INTEGER PK), `applied_at` |
+| `market_sources` | Human-curated evidence sources per market | `id`, `market_ticker`, `market_id`, `kind` (`official_resolution_source\|supporting_source\|news\|forecast\|data\|other`), `title`, `url`, `publisher`, `excerpt`, `notes`, `credibility` (`official\|high\|medium\|low\|unknown`), `status` (`draft\|accepted\|rejected`), `added_by` (`human\|fixture\|ai_draft`), timestamps |
+| `research_briefs` | Manually entered research briefs (human-typed; never labeled AI research) | `id`, `market_ticker`, `state` (`not_run\|insufficient_sources\|draft\|human_reviewed`), `summary`, `yes_case`, `no_case`, `key_evidence`, `uncertainties`, `missing_info`, `confidence` (`low\|medium\|high`), `source_count` (server-computed), `basis` (`manual\|assembled_from_sources\|ai_draft_unreviewed\|fixture`), timestamps |
+| `probability_estimates` | Human-entered fair-probability ranges | `id`, `market_ticker`, `low`/`mid`/`high` (REAL fractions), `rationale` (required), `basis` (`human_entered\|human_reviewed\|ai_suggested_unreviewed\|fixture`), `confidence`, `source_count`, `brief_id`, timestamps |
+| `theses` | Written theses | `id`, `market_ticker`, `status` (`draft\|ready_for_risk\|archived`), `thesis` (required non-empty), `why_mispriced`, `invalidation_criteria`, `probability_estimate_id`, `source_ids_json`, timestamps |
+
+Conventions (binding; stated once in `lib/research-store/types.ts`):
+
+- **Units:** the database and API store probabilities as fractions in [0, 1] with
+  `low <= mid <= high` (enforced by CHECK constraints). UI forms take percent and
+  convert client-side. Expected edge displays in cents (`edge × 100`), matching
+  the risk engine's reason strings, and is YES-side signed.
+- **Ids and timestamps:** TEXT UUID primary keys; ISO-8601 TEXT timestamps that
+  are always injected by callers (`nowIso`) — the store never reads a clock, and
+  the database never generates a time.
+- **Server-authoritative counts:** `source_count` is computed from currently
+  accepted sources at write time and never trusted from the client.
+- **Latest-active selection:** the active brief/estimate is the latest row by
+  `created_at DESC, rowid DESC`; the active thesis is the latest non-`archived`
+  row by the same ordering. Saving a brief or estimate always inserts a new row.
+- **Audit trail — no deletes:** there are no DELETE routes and no delete
+  functions. Sources are `rejected`, theses are `archived`; superseded briefs and
+  estimates simply stop being latest. Every row that ever existed remains
+  queryable for audit.
+- Enum value sets are double-enforced: `validation.ts` is the primary validator
+  (HTTP 400 path); the CHECK constraints above are database-level defense only.
 
 ## Platform
 
@@ -269,5 +306,7 @@ Aggregated predicted-vs-actual for calibration tracking (Brier score later).
 - CalibrationBin aggregates ProbabilityEstimate + Outcome pairs (and PaperTrade PnL)
   per scope.
 
-Physical schema, storage choice, and indexing are deliberately deferred to a later
-phase. Do not create schema files from this document without explicit approval.
+Physical schema for the entities above remains deferred except where the Phase 3
+research-store section documents otherwise (sources, briefs, probability
+estimates, theses). Do not create further schema files from this document without
+explicit approval.

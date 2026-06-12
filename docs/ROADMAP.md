@@ -68,6 +68,17 @@ category source lists documented; retrieval tested against fixture data.
 Not in this phase: Probability/edge math, trade recommendations, risk verdicts, paper
 trading, wallet data, execution.
 
+Status (2026-06-11): **Phase 3 as built is complete, pending explicit human approval
+to advance.** The human-approved Phase 3 Master Brief redefined this phase's scope
+to the manual research-to-thesis loop with local SQLite persistence: human-curated
+sources → manual research brief → human-entered fair-probability range → written
+thesis → unchanged deterministic risk verdict. Automated per-category evidence
+retrieval and AI-written briefs remain future work (the original scope above plus
+Phase 4's AI-brief portion). Persisted sources never auto-verify the settlement
+source, so live markets may remain SKIP with full research — correct behavior. No
+paper journal, PnL, calibration, or execution code was added. See
+`docs/ARCHITECTURE.md` (Phase 3 as built) and `docs/DECISION_LOG.md`.
+
 ## Phase 4 — Probability engine + AI briefs
 
 Scope: Estimate market-implied probability; fair probability low/mid/high; confidence;
