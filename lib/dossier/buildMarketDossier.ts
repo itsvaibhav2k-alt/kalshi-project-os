@@ -1,5 +1,5 @@
 /**
- * Dossier composition for Phase 2 (pipeline stages 02-04 glued together).
+ * Dossier composition (pipeline stages 02-04 glued together).
  *
  * Pure and deterministic: no network, no LLM, no clock, no randomness —
  * `nowIso` is always injected by the caller (one timestamp per refresh).
@@ -8,40 +8,68 @@
  * verdict, and the dossier only assembles their outputs. It never alters
  * a verdict or invents data.
  *
- * Phase 2 facts baked in here:
- * - The live research engine does not exist, so every brief is 'not_run'.
- * - No fair range is ever supplied, so fair probability stays null.
- * - No paper journal exists, so `hasWrittenThesis` is hard-coded false.
+ * Two research paths exist:
+ * - Without a persisted snapshot (null), the brief is 'not_run', no fair
+ *   range exists, and the written-thesis flag is false — the original
+ *   no-research path, byte-compatible with Phase 2 behavior.
+ * - With a persisted snapshot (plain data supplied by the caller; this
+ *   module performs no I/O), the brief is mapped from persisted state, the
+ *   persisted fair range feeds the probability stage, and the thesis flag
+ *   reflects a currently-valid ready thesis. The risk engine still applies
+ *   every check unchanged.
  */
 
 import type { NormalizedMarket } from '@/lib/markets/types';
 import { estimateProbability } from '@/lib/probability/estimate';
+import type { FairRange } from '@/lib/probability/estimate';
 import { buildNotRunBrief } from '@/lib/research/buildResearchBrief';
 import { evaluateTradeCandidate } from '@/lib/risk/evaluateTradeCandidate';
 import { understandMarket } from '@/lib/understanding/understandMarket';
 
-import type { EvaluationSummary, MarketDossier } from './types';
+import { mapResearchState } from './mapResearchState';
+import type { EvaluationSummary, MarketDossier, PersistedResearchSnapshot } from './types';
+
+/** Extracts the persisted fair range, or undefined when any bound is null. */
+function resolveFairRange(snapshot: PersistedResearchSnapshot): FairRange | undefined {
+  if (snapshot.fairLow === null || snapshot.fairMid === null || snapshot.fairHigh === null) {
+    return undefined;
+  }
+  return { low: snapshot.fairLow, mid: snapshot.fairMid, high: snapshot.fairHigh };
+}
 
 /**
- * Builds the complete read-only decision dossier for one market.
+ * Builds the complete read-only decision dossier for one market, optionally
+ * consuming a persisted research snapshot.
  *
- * Runs the Phase 2 pipeline stages in order — understand, research (not
- * run), probability, risk — and bundles their outputs without modification.
+ * A null snapshot is the no-research path and behaves exactly like
+ * `buildMarketDossier`. With a snapshot, persisted research flows into the
+ * pipeline as advisory data only — the deterministic risk engine remains the
+ * sole verdict authority, and a fair range without accepted sources is
+ * discarded by the probability stage.
  *
  * @param market - The normalized market to derive the dossier from
+ * @param snapshot - Persisted research snapshot as plain data, or null
  * @param nowIso - ISO 8601 timestamp supplied by the caller (keeps this pure)
  * @returns The dossier with all five sections and `source: 'derived'`
  */
-export function buildMarketDossier(market: NormalizedMarket, nowIso: string): MarketDossier {
+export function buildMarketDossierWithResearch(
+  market: NormalizedMarket,
+  snapshot: PersistedResearchSnapshot | null,
+  nowIso: string,
+): MarketDossier {
   const understanding = understandMarket(market);
-  const researchBrief = buildNotRunBrief(market.id, nowIso);
-  const probabilityEstimate = estimateProbability(market, researchBrief, nowIso);
+  const researchBrief =
+    snapshot === null
+      ? buildNotRunBrief(market.id, nowIso)
+      : mapResearchState(market, snapshot, nowIso);
+  const fairRange = snapshot === null ? undefined : resolveFairRange(snapshot);
+  const probabilityEstimate = estimateProbability(market, researchBrief, nowIso, fairRange);
   const riskEvaluation = evaluateTradeCandidate({
     market,
     understanding,
     research: researchBrief,
     probability: probabilityEstimate,
-    hasWrittenThesis: false,
+    hasWrittenThesis: snapshot === null ? false : snapshot.hasReadyThesis,
     evaluatedAt: nowIso,
   });
 
@@ -56,23 +84,40 @@ export function buildMarketDossier(market: NormalizedMarket, nowIso: string): Ma
 }
 
 /**
+ * Builds the complete read-only decision dossier for one market without
+ * persisted research (the original no-research path).
+ *
+ * @param market - The normalized market to derive the dossier from
+ * @param nowIso - ISO 8601 timestamp supplied by the caller (keeps this pure)
+ * @returns The dossier with all five sections and `source: 'derived'`
+ */
+export function buildMarketDossier(market: NormalizedMarket, nowIso: string): MarketDossier {
+  return buildMarketDossierWithResearch(market, null, nowIso);
+}
+
+/**
  * Derives dossiers for every market and tallies the pipeline counts.
  *
- * `researchSourced` counts briefs with status 'sourced', which is always 0
- * in Phase 2 because the live research engine does not exist — implied
- * probability is price math and is never counted as a research prediction.
+ * `researchSourced` counts briefs that mapped to status 'sourced', which
+ * requires a persisted snapshot with at least one accepted source. Without
+ * the optional snapshot map the count is always 0 — implied probability is
+ * price math and is never counted as a research prediction.
  *
  * @param markets - The scanned normalized markets
  * @param nowIso - ISO 8601 timestamp supplied by the caller (one per refresh)
+ * @param researchByTicker - Optional persisted research snapshots keyed by
+ *   the market's external id (ticker)
  * @returns Aggregate counts for the pipeline row
  */
 export function summarizeEvaluations(
   markets: NormalizedMarket[],
   nowIso: string,
+  researchByTicker?: Readonly<Record<string, PersistedResearchSnapshot>>,
 ): EvaluationSummary {
   return markets.reduce<EvaluationSummary>(
     (summary, market) => {
-      const dossier = buildMarketDossier(market, nowIso);
+      const snapshot = researchByTicker?.[market.externalId] ?? null;
+      const dossier = buildMarketDossierWithResearch(market, snapshot, nowIso);
       const verdict = dossier.riskEvaluation.verdict;
       return {
         understood: summary.understood + 1,
