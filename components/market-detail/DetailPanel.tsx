@@ -2,14 +2,19 @@ import type { ReactElement } from 'react';
 
 import type { MarketDossier } from '@/lib/dossier/types';
 import type { NormalizedMarket } from '@/lib/markets/types';
-import type { ResearchStateResponse } from '@/lib/research-store/types';
+import type {
+  PaperDecisionEntryRecord,
+  ResearchStateResponse,
+} from '@/lib/research-store/types';
 import { formatCents, formatCount, formatDateTime } from '@/lib/utils/format';
 
 import { ContractUnderstandingPanel } from './ContractUnderstandingPanel';
+import { PaperJournalPanel } from './PaperJournalPanel';
 import { ProbabilityPanel } from './ProbabilityPanel';
-import type { ResearchActions } from './researchActions';
+import type { PaperJournalActions, ResearchActions } from './researchActions';
 import { ResearchBriefPanel } from './ResearchBriefPanel';
 import { RiskPanel } from './RiskPanel';
+import { SettlementVerificationPanel } from './SettlementVerificationPanel';
 import { SourcesPanel } from './SourcesPanel';
 import { ThesisPanel } from './ThesisPanel';
 
@@ -22,8 +27,14 @@ export interface DetailPanelProps {
   research: ResearchStateResponse | null;
   /** Plain-English research API error, or null when none. */
   researchError: string | null;
-  /** Research mutation callbacks (the only mutations that exist in V1). */
+  /** Research mutation callbacks (research/thesis/settlement records). */
   actions: ResearchActions;
+  /** Paper journal entries for the selected market, or null while loading/unavailable. */
+  paperEntries: readonly PaperDecisionEntryRecord[] | null;
+  /** Plain-English paper-journal API error, or null when none. */
+  paperJournalError: string | null;
+  /** Paper-journal mutation callbacks (simulated decision records only). */
+  paperActions: PaperJournalActions;
 }
 
 interface KvItem {
@@ -70,11 +81,14 @@ function ResearchUnavailableSection({
 
 /**
  * Decision dossier for one selected market. Composes the pipeline sections
- * in order — contract understanding, persisted research sources, research
- * brief (derived plus the manual editor), probability (derived plus the
- * fair-range form), written thesis, deterministic risk verdict — followed by
+ * in sequence — contract understanding, settlement verification (human record),
+ * persisted research sources, research brief (derived plus the manual
+ * editor), probability (derived plus the fair-range form), written thesis,
+ * deterministic risk verdict, the paper decision journal (simulated records
+ * only) — followed by
  * the raw market numbers and data flags. Missing fields are labeled
- * honestly, never invented; the only mutations are research/thesis records,
+ * honestly, never invented; the only mutations are research/thesis/settlement
+ * and paper-journal records,
  * and the static trading-status panel stays locked at the bottom.
  */
 export function DetailPanel({
@@ -83,6 +97,9 @@ export function DetailPanel({
   research,
   researchError,
   actions,
+  paperEntries,
+  paperJournalError,
+  paperActions,
 }: DetailPanelProps): ReactElement {
   if (dossier === null) {
     return (
@@ -110,6 +127,22 @@ export function DetailPanel({
       </div>
 
       <ContractUnderstandingPanel understanding={dossier.understanding} />
+
+      {research === null ? (
+        <ResearchUnavailableSection
+          label="02 Understand · settlement verification (human record)"
+          researchError={researchError}
+        />
+      ) : (
+        <SettlementVerificationPanel
+          key={`settlement-${editorKey}`}
+          payloadStatus={dossier.understanding.settlementSourceStatus}
+          settlementSources={research.settlementSources}
+          verifiedSettlementSource={research.summary.verifiedSettlementSource}
+          onSaveSettlementSource={actions.saveSettlementSource}
+          onUpdateSettlementSource={actions.updateSettlementSource}
+        />
+      )}
 
       {research === null ? (
         <ResearchUnavailableSection
@@ -168,6 +201,15 @@ export function DetailPanel({
       )}
 
       <RiskPanel evaluation={dossier.riskEvaluation} />
+
+      <PaperJournalPanel
+        key={`paper-${editorKey}`}
+        dossier={dossier}
+        paperEntries={paperEntries}
+        paperJournalError={paperJournalError}
+        onLogPaperDecision={paperActions.logPaperDecision}
+        onArchiveEntry={paperActions.archiveEntry}
+      />
 
       <div className="dossier-section">
         <span className="label">Market numbers</span>

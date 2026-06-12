@@ -16,8 +16,9 @@ coverage/
 # env files are forbidden in this project; ignored as a guard
 .env*
 
-# local analysis tooling
+# local analysis/tooling state
 .understand-anything/
+.claude/scheduled_tasks.lock
 
 # local research database (SQLite), never committed
 .kalshi-os/

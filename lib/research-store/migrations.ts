@@ -1,8 +1,12 @@
 import type Database from 'better-sqlite3';
 
 import {
+  MARKET_SETTLEMENT_SOURCES_DDL,
+  MARKET_SETTLEMENT_SOURCES_TICKER_INDEX_DDL,
   MARKET_SOURCES_DDL,
   MARKET_SOURCES_TICKER_INDEX_DDL,
+  PAPER_DECISION_ENTRIES_DDL,
+  PAPER_DECISION_ENTRIES_TICKER_INDEX_DDL,
   PROBABILITY_ESTIMATES_DDL,
   PROBABILITY_ESTIMATES_TICKER_INDEX_DDL,
   RESEARCH_BRIEFS_DDL,
@@ -36,6 +40,17 @@ export const MIGRATIONS: readonly Migration[] = [
       PROBABILITY_ESTIMATES_TICKER_INDEX_DDL,
       THESES_DDL,
       THESES_TICKER_INDEX_DDL,
+    ],
+  },
+  {
+    version: 2,
+    description:
+      'Phase 4: human-verified settlement sources and paper decision journal entries',
+    statements: [
+      MARKET_SETTLEMENT_SOURCES_DDL,
+      MARKET_SETTLEMENT_SOURCES_TICKER_INDEX_DDL,
+      PAPER_DECISION_ENTRIES_DDL,
+      PAPER_DECISION_ENTRIES_TICKER_INDEX_DDL,
     ],
   },
 ];

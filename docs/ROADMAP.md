@@ -92,6 +92,23 @@ for the risk engine.
 Not in this phase: Risk verdicts, paper trading, position sizing, execution, wallet
 signals, profitability claims.
 
+Status (2026-06-12): **Phase 4 as built is complete, pending explicit human
+approval to advance.** The human-approved Phase 4 Master Brief redefined this
+phase's scope to (1) human-verified settlement-source records and (2) the paper
+decision journal — the probability-engine portion of the original scope above
+already shipped in Phases 2–3, and AI briefs remain deferred (see the Phase 3
+status note and `docs/DECISION_LOG.md`). As built: a dedicated settlement
+record (`draft`/`human_verified`/`rejected`, no deletes) satisfies the
+`settlement_source` risk check via a pure dossier overlay with `lib/risk`
+byte-unchanged; paper decision entries are simulated decision snapshots created
+only from server-validated `PAPER_TRADE` dossiers, under the new
+`/api/paper-journal/**` namespace (the second and last V1 mutation namespace).
+This lands the journaling half of Phase 6's scope early, in a deliberately
+narrower form. Explicitly deferred: paper PnL, NO-side entries, settlement
+outcome tracking/learning, calibration, and all execution code. See
+`docs/ARCHITECTURE.md` (Phase 4 as built), `docs/RISK_ENGINE.md` (Phase 4
+status), and `docs/SAFETY.md` (section h).
+
 ## Phase 5 — Deterministic risk engine
 
 Scope: Hard-coded rule evaluation: resolution clarity, settlement source clarity, spread,

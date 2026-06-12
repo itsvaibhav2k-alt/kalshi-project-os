@@ -1,8 +1,8 @@
 # Risk Engine
 
-Status: Phase 0 specification, plus the Phase 2 implementation-status and Phase 3
-input-status records below.
-Last updated: 2026-06-11
+Status: Phase 0 specification, plus the Phase 2 implementation-status, Phase 3
+input-status, and Phase 4 settlement-overlay records below.
+Last updated: 2026-06-12
 
 The risk engine is the spine of Kalshi Project OS. It is deterministic: hard-coded rules decide
 what is allowed. No LLM output, no wallet signal, and no strategy signal ever sits in the verdict
@@ -48,7 +48,7 @@ They may be changed only by an explicit human decision recorded in
 |---|---|---|
 | 1 | `paper_only_mode` | Informational pass: Training Wheels mode is active |
 | 2 | `resolution_clarity` | Clarity ≠ `clear` ⇒ fail |
-| 3 | `settlement_source` | Source missing OR unverified ⇒ fail (neither Phase 2 nor Phase 3 verifies settlement sources, so live Kalshi markets always fail here — by design; see the Phase 3 settlement-source policy below) |
+| 3 | `settlement_source` | Source missing OR unverified ⇒ fail (neither Phase 2 nor Phase 3 verifies settlement sources; since Phase 4, a human-verified settlement record can make this check pass via the pure dossier overlay — see the Phase 3 policy and the Phase 4 status section below) |
 | 4 | `max_spread` | Spread null or > 10 cents ⇒ fail |
 | 5 | `volume` | Volume null or zero ⇒ fail |
 | 6 | `liquidity` | Volume < 1000 or open interest < 100 ⇒ warn (caps verdict at WATCH) |
@@ -110,6 +110,45 @@ sources, a human-reviewed brief, a fair-probability range, and a ready thesis.
 That outcome is correct behavior and is asserted by a dedicated integration
 test. Settlement-source verification is a separate future module requiring
 explicit human approval.
+
+## Phase 4 status (2026-06-12): engine still byte-unchanged; settlement check satisfiable by composition
+
+Phase 4 again made **zero changes** to `lib/risk` — byte-for-byte identical, with
+the purity scan and every existing risk test passing against the same engine.
+What changed is the *input* to check 3 (`settlement_source`):
+
+- `checkSettlementSource` has always passed when
+  `understanding.settlementSourceStatus === 'provided'`, a value
+  `understandMarket` never emits from market payloads (listed settlement text
+  derives `'unverified'`).
+- Phase 4 added a pure overlay, `lib/dossier/applySettlementVerification.ts`,
+  that returns a NEW understanding object with `settlementSourceStatus:
+  'provided'` **only when a local settlement-source record with current status
+  `human_verified` exists** for the market. Draft, rejected, and absent records
+  return the input unchanged. The overlay is the only path to `'provided'`.
+- Research sources still never verify settlement — the Phase 3 policy above is
+  unchanged. An accepted `official_resolution_source` research row has no
+  effect on this check.
+- The overlay never touches `resolutionClarity` or `ambiguityFlags`: an
+  ambiguous market with a verified settlement source still SKIPs at the
+  independent `resolution_clarity` check.
+
+This is composition, not a rule change: the deterministic engine remains the
+sole verdict authority, and a human verification record is an input it judges,
+never an approval. With a verified settlement source, accepted sources, a
+human-reviewed brief, a sufficient fair-probability edge, and a ready thesis, a
+clean market can now genuinely reach `PAPER_TRADE` through the real pipeline
+(first proven end-to-end by `tests/settlement-overlay.test.ts`).
+
+**PAPER_TRADE is now actionable — paper-only.** Phase 4 added the paper
+decision journal: a human may log a simulated decision snapshot for a market
+whose verdict is `PAPER_TRADE`. The journal POST re-derives the dossier
+server-side and returns 409 for anything else, so the engine gates every entry.
+Entries record context only (price, fair range, edge, confidence, thesis,
+settlement record, risk checklist) — no stake, no PnL, no lifecycle, no
+execution — and are YES-side only in V1, so NO-side framing remains deferred.
+The default verdict remains SKIP, and live markets without human verification
+work still SKIP exactly as before.
 
 **Edge convention (YES side).** Expected edge is YES-side signed:
 `fairMid − marketImpliedProbability`, a fraction in [0, 1] compared as cents

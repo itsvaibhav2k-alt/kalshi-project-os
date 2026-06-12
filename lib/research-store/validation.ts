@@ -3,6 +3,10 @@ import {
   BRIEF_STATES,
   CONFIDENCE_LEVELS,
   ESTIMATE_BASES,
+  PAPER_ENTRY_RISK_VERDICTS,
+  PAPER_ENTRY_SIDES,
+  SETTLEMENT_AUTHORITY_TYPES,
+  SETTLEMENT_VERIFICATION_STATUSES,
   SOURCE_ADDED_BY,
   SOURCE_CREDIBILITIES,
   SOURCE_KINDS,
@@ -330,6 +334,142 @@ export function validateThesisReady(
     errors.push('the linked probability estimate id does not match');
   } else if (probabilityEstimate.marketTicker !== thesis.marketTicker) {
     errors.push('the linked probability estimate belongs to a different market');
+  }
+
+  return toResult(errors);
+}
+
+/**
+ * Validates a settlement-source create/update payload (Phase 4).
+ *
+ * Rules: title is required and non-empty for every status; status must be in
+ * its union; url is optional, but when present as a non-empty string it must
+ * parse as an http(s) URL; authorityType is optional, but when present it
+ * must be in its union. Status 'human_verified' additionally requires a valid
+ * http(s) url, a valid authorityType, and a non-empty verificationRationale.
+ * Status 'rejected' needs only a title — rejecting is always allowed.
+ *
+ * @param payload - Untrusted request body.
+ * @returns Validation result with field-level error messages.
+ */
+export function validateSettlementSourceInput(payload: unknown): ValidationResult {
+  if (!isRecord(payload)) {
+    return toResult(['payload must be an object']);
+  }
+
+  const errors: string[] = [];
+
+  if (!isNonEmptyString(payload.title)) {
+    errors.push('title is required and must be non-empty');
+  }
+  if (!isOneOf(payload.status, SETTLEMENT_VERIFICATION_STATUSES)) {
+    errors.push(`status must be one of: ${SETTLEMENT_VERIFICATION_STATUSES.join(', ')}`);
+  }
+
+  const url = payload.url;
+  if (url !== undefined && url !== null) {
+    if (typeof url !== 'string') {
+      errors.push('url must be a string when present');
+    } else if (url.trim() !== '' && !isHttpUrl(url)) {
+      errors.push('url must be a valid http(s) URL when present');
+    }
+  }
+
+  const authorityType = payload.authorityType;
+  if (authorityType !== undefined && authorityType !== null) {
+    if (!isOneOf(authorityType, SETTLEMENT_AUTHORITY_TYPES)) {
+      errors.push(`authorityType must be one of: ${SETTLEMENT_AUTHORITY_TYPES.join(', ')}`);
+    }
+  }
+
+  if (payload.status === 'human_verified') {
+    if (!isNonEmptyString(url) || !isHttpUrl(url)) {
+      errors.push('status human_verified requires a valid http(s) url');
+    }
+    if (!isOneOf(authorityType, SETTLEMENT_AUTHORITY_TYPES)) {
+      errors.push('status human_verified requires a valid authorityType');
+    }
+    if (!isNonEmptyString(payload.verificationRationale)) {
+      errors.push('status human_verified requires a non-empty verificationRationale');
+    }
+  }
+
+  return toResult(errors);
+}
+
+/**
+ * Validates a paper decision entry input (Phase 4).
+ *
+ * Paper entries are simulated decision snapshots only. Rules: side must be
+ * 'YES'; riskVerdict must be 'PAPER_TRADE' (the deterministic risk engine
+ * alone issues verdicts — this shape check is defense in depth, never an
+ * approval); paperPrice, impliedProbability, fairLow, fairMid, and fairHigh
+ * must be finite fractions in [0, 1] with fairLow <= fairMid <= fairHigh;
+ * expectedEdge must be a finite fraction difference in [-1, 1];
+ * thesisSnapshot, settlementSourceSnapshotJson, and riskChecklistJson are
+ * required and must be non-empty.
+ *
+ * @param payload - Untrusted entry input.
+ * @returns Validation result with field-level error messages.
+ */
+export function validatePaperEntryInput(payload: unknown): ValidationResult {
+  if (!isRecord(payload)) {
+    return toResult(['payload must be an object']);
+  }
+
+  const errors: string[] = [];
+
+  if (!isOneOf(payload.side, PAPER_ENTRY_SIDES)) {
+    errors.push(`side must be one of: ${PAPER_ENTRY_SIDES.join(', ')}`);
+  }
+  if (!isOneOf(payload.riskVerdict, PAPER_ENTRY_RISK_VERDICTS)) {
+    errors.push(`riskVerdict must be one of: ${PAPER_ENTRY_RISK_VERDICTS.join(', ')}`);
+  }
+
+  const fractionFields: Array<
+    ['paperPrice' | 'impliedProbability' | 'fairLow' | 'fairMid' | 'fairHigh', unknown]
+  > = [
+    ['paperPrice', payload.paperPrice],
+    ['impliedProbability', payload.impliedProbability],
+    ['fairLow', payload.fairLow],
+    ['fairMid', payload.fairMid],
+    ['fairHigh', payload.fairHigh],
+  ];
+  let fairRangeNumeric = true;
+  for (const [name, value] of fractionFields) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      errors.push(`${name} must be a finite number`);
+      if (name.startsWith('fair')) {
+        fairRangeNumeric = false;
+      }
+    } else if (value < 0 || value > 1) {
+      errors.push(`${name} must be a fraction between 0 and 1 inclusive`);
+    }
+  }
+  if (fairRangeNumeric) {
+    const fairLow = payload.fairLow as number;
+    const fairMid = payload.fairMid as number;
+    const fairHigh = payload.fairHigh as number;
+    if (!(fairLow <= fairMid && fairMid <= fairHigh)) {
+      errors.push('fair range must satisfy fairLow <= fairMid <= fairHigh');
+    }
+  }
+
+  const expectedEdge = payload.expectedEdge;
+  if (typeof expectedEdge !== 'number' || !Number.isFinite(expectedEdge)) {
+    errors.push('expectedEdge must be a finite number');
+  } else if (expectedEdge < -1 || expectedEdge > 1) {
+    errors.push('expectedEdge must be between -1 and 1 inclusive');
+  }
+
+  if (!isNonEmptyString(payload.thesisSnapshot)) {
+    errors.push('thesisSnapshot is required and must be non-empty');
+  }
+  if (!isNonEmptyString(payload.settlementSourceSnapshotJson)) {
+    errors.push('settlementSourceSnapshotJson is required and must be non-empty');
+  }
+  if (!isNonEmptyString(payload.riskChecklistJson)) {
+    errors.push('riskChecklistJson is required and must be non-empty');
   }
 
   return toResult(errors);

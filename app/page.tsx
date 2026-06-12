@@ -4,9 +4,10 @@
  * Phase 3 dashboard: Kalshi market scanner with research-to-thesis dossiers.
  *
  * Fetches /api/markets plus the bulk /api/research summary map on each
- * refresh, and the full /api/research/[ticker] state when a market is
- * selected and after every research mutation. Market data stays read-only;
- * research and thesis records are the ONLY mutations in V1, and they are
+ * refresh, and the full /api/research/[ticker] state plus the paper journal
+ * entries when a market is selected and after every mutation. Market data
+ * stays read-only; research, thesis, settlement-verification, and paper-only
+ * decision-journal records are the ONLY mutations in V1, and they are
  * advisory inputs — the deterministic risk engine alone issues verdicts.
  * One evaluation timestamp per refresh (the fetch timestamp) keeps the
  * derivations pure. No trading controls exist anywhere on this page.
@@ -20,7 +21,10 @@ import { PipelineRow } from '@/components/layout/PipelineRow';
 import { SafetyFooter } from '@/components/layout/SafetyFooter';
 import { StatusStrip } from '@/components/layout/StatusStrip';
 import { DetailPanel } from '@/components/market-detail/DetailPanel';
-import type { ResearchActions } from '@/components/market-detail/researchActions';
+import type {
+  PaperJournalActions,
+  ResearchActions,
+} from '@/components/market-detail/researchActions';
 import { FilterBar } from '@/components/scanner/FilterBar';
 import { ScannerTable } from '@/components/scanner/ScannerTable';
 import {
@@ -30,7 +34,9 @@ import {
 import type { PersistedResearchSnapshot } from '@/lib/dossier/types';
 import { filterByCategory, filterByStatus, searchMarkets } from '@/lib/markets/filters';
 import type { MarketsResult, MarketStatus } from '@/lib/markets/types';
+import { toPersistedResearchSnapshot } from '@/lib/research-store/snapshot';
 import type {
+  PaperDecisionEntryRecord,
   ResearchStateResponse,
   ResearchSummary,
   ResearchSummaryMap,
@@ -54,33 +60,6 @@ function deriveCategories(result: MarketsResult | null): string[] {
 }
 
 /**
- * Converts the per-ticker research state into the dossier snapshot DTO.
- * Fair values flow only when the server-recomputed summary still vouches for
- * them; full source records ride along for the selected market.
- */
-function snapshotFromState(state: ResearchStateResponse): PersistedResearchSnapshot {
-  return {
-    acceptedSourceCount: state.summary.acceptedSourceCount,
-    briefState: state.brief === null ? 'not_run' : state.brief.state,
-    confidence: state.summary.researchConfidence,
-    fairLow:
-      state.summary.hasFairProbability && state.probabilityEstimate !== null
-        ? state.probabilityEstimate.low
-        : null,
-    fairMid:
-      state.summary.hasFairProbability && state.probabilityEstimate !== null
-        ? state.probabilityEstimate.mid
-        : null,
-    fairHigh:
-      state.summary.hasFairProbability && state.probabilityEstimate !== null
-        ? state.probabilityEstimate.high
-        : null,
-    hasReadyThesis: state.summary.hasReadyThesis,
-    sources: state.sources,
-  };
-}
-
-/**
  * Converts one bulk research summary into the dossier snapshot DTO.
  *
  * Bulk summaries deliberately omit brief state and fair values, so this
@@ -89,9 +68,12 @@ function snapshotFromState(state: ResearchStateResponse): PersistedResearchSnaps
  * pipeline counts markets with accepted-source research), and the fair range
  * stays null — a fair probability is never invented client-side, which means
  * non-selected markets evaluate without one. The selected market always uses
- * the full per-ticker snapshot instead.
+ * the full per-ticker snapshot (via the shared `toPersistedResearchSnapshot`)
+ * instead. The active verified settlement record DOES flow through here so
+ * bulk verdict counts match the selected-market dossier.
  */
 function snapshotFromSummary(summary: ResearchSummary): PersistedResearchSnapshot {
+  const verified = summary.verifiedSettlementSource;
   return {
     acceptedSourceCount: summary.acceptedSourceCount,
     briefState: summary.hasHumanReviewedBrief
@@ -104,6 +86,18 @@ function snapshotFromSummary(summary: ResearchSummary): PersistedResearchSnapsho
     fairMid: null,
     fairHigh: null,
     hasReadyThesis: summary.hasReadyThesis,
+    settlementVerification:
+      verified === null
+        ? null
+        : {
+            id: verified.id,
+            title: verified.title,
+            url: verified.url,
+            publisher: verified.publisher,
+            authorityType: verified.authorityType,
+            status: 'human_verified',
+            updatedAt: verified.updatedAt,
+          },
   };
 }
 
@@ -141,6 +135,8 @@ export default function HomePage(): ReactElement {
   const [researchBulkError, setResearchBulkError] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<ResearchStateResponse | null>(null);
   const [researchError, setResearchError] = useState<string | null>(null);
+  const [paperEntries, setPaperEntries] = useState<PaperDecisionEntryRecord[] | null>(null);
+  const [paperJournalError, setPaperJournalError] = useState<string | null>(null);
 
   const loadResearchSummaries = useCallback(async (): Promise<void> => {
     try {
@@ -232,13 +228,39 @@ export default function HomePage(): ReactElement {
     }
   }, []);
 
+  const loadPaperEntries = useCallback(async (ticker: string): Promise<void> => {
+    try {
+      const response = await fetch(`/api/paper-journal/${encodeURIComponent(ticker)}`);
+      if (!response.ok) {
+        throw new Error(await readResearchError(response));
+      }
+      const data = (await response.json()) as { paperEntries: PaperDecisionEntryRecord[] };
+      if (selectedTickerRef.current !== ticker) {
+        return;
+      }
+      setPaperEntries(data.paperEntries);
+      setPaperJournalError(null);
+    } catch (error: unknown) {
+      if (selectedTickerRef.current !== ticker) {
+        return;
+      }
+      setPaperEntries(null);
+      setPaperJournalError(
+        error instanceof Error ? error.message : 'Unexpected failure loading paper journal entries',
+      );
+    }
+  }, []);
+
   useEffect(() => {
     setSelectedResearch(null);
     setResearchError(null);
+    setPaperEntries(null);
+    setPaperJournalError(null);
     if (selectedTicker !== null) {
       void loadSelectedResearch(selectedTicker);
+      void loadPaperEntries(selectedTicker);
     }
-  }, [selectedTicker, loadSelectedResearch]);
+  }, [selectedTicker, loadSelectedResearch, loadPaperEntries]);
 
   const mutateResearch = useCallback(
     async (
@@ -297,6 +319,23 @@ export default function HomePage(): ReactElement {
               briefId: selectedResearch?.brief?.id ?? null,
             });
       },
+      saveSettlementSource: async (payload) => {
+        const ticker = requireTicker();
+        return ticker === null
+          ? 'no market is selected'
+          : mutateResearch(ticker, '/settlement-source', 'POST', payload);
+      },
+      updateSettlementSource: async (settlementSourceId, patch) => {
+        const ticker = requireTicker();
+        return ticker === null
+          ? 'no market is selected'
+          : mutateResearch(
+              ticker,
+              `/settlement-source/${encodeURIComponent(settlementSourceId)}`,
+              'PATCH',
+              patch,
+            );
+      },
       saveThesis: async (payload, thesisId) => {
         const ticker = requireTicker();
         if (ticker === null) {
@@ -319,6 +358,54 @@ export default function HomePage(): ReactElement {
     };
   }, [mutateResearch, selectedResearch]);
 
+  // Mirrors mutateResearch for the paper-only journal namespace. After a
+  // successful mutation the journal entries AND the research state are
+  // re-fetched so the displayed verdict and the journal stay consistent.
+  const mutatePaperJournal = useCallback(
+    async (path: string, method: 'POST' | 'PATCH', body: unknown): Promise<string | null> => {
+      try {
+        const response = await fetch(`/api/paper-journal${path}`, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          return await readResearchError(response);
+        }
+        const ticker = selectedTickerRef.current;
+        if (ticker !== null) {
+          await loadPaperEntries(ticker);
+          await loadSelectedResearch(ticker);
+        }
+        void loadResearchSummaries();
+        return null;
+      } catch (error: unknown) {
+        return error instanceof Error ? error.message : 'Unexpected paper journal API failure';
+      }
+    },
+    [loadPaperEntries, loadSelectedResearch, loadResearchSummaries],
+  );
+
+  const paperJournalActions = useMemo<PaperJournalActions>(
+    () => ({
+      logPaperDecision: async () => {
+        const ticker = selectedTickerRef.current;
+        return ticker === null
+          ? 'no market is selected'
+          : mutatePaperJournal(`/${encodeURIComponent(ticker)}/entries`, 'POST', { side: 'YES' });
+      },
+      archiveEntry: async (entryId) => {
+        const ticker = selectedTickerRef.current;
+        return ticker === null
+          ? 'no market is selected'
+          : mutatePaperJournal(`/entries/${encodeURIComponent(entryId)}`, 'PATCH', {
+              status: 'archived',
+            });
+      },
+    }),
+    [mutatePaperJournal],
+  );
+
   // One evaluation timestamp per refresh: reuse the fetch timestamp so every
   // derived dossier in a refresh shares it and the pure engines stay clockless.
   const nowIso = result?.fetchedAt ?? null;
@@ -331,7 +418,7 @@ export default function HomePage(): ReactElement {
       map[ticker] = snapshotFromSummary(summary);
     }
     if (selectedResearch !== null) {
-      map[selectedResearch.ticker] = snapshotFromState(selectedResearch);
+      map[selectedResearch.ticker] = toPersistedResearchSnapshot(selectedResearch);
     }
     return map;
   }, [researchSummaries, selectedResearch]);
@@ -349,7 +436,7 @@ export default function HomePage(): ReactElement {
       selectedResearch !== null &&
       selectedTicker !== null &&
       selectedResearch.ticker === selectedTicker
-        ? snapshotFromState(selectedResearch)
+        ? toPersistedResearchSnapshot(selectedResearch)
         : null,
     [selectedResearch, selectedTicker],
   );
@@ -452,6 +539,9 @@ export default function HomePage(): ReactElement {
               research={selectedSnapshot === null ? null : selectedResearch}
               researchError={researchError}
               actions={researchActions}
+              paperEntries={paperEntries}
+              paperJournalError={paperJournalError}
+              paperActions={paperJournalActions}
             />
           </section>
         </div>

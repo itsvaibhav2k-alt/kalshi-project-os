@@ -69,7 +69,39 @@ thesis, and the work persists across refreshes.
   correct behavior, not a bug. Settlement-source verification is a separate
   future module requiring explicit approval.
 
-No paper journal, no PnL, no calibration, and no execution code exist. This
+**Phase 4 complete (2026-06-12, pending human approval to advance): settlement
+verification + paper decision journal.** The two gaps that kept every live
+market at SKIP-by-default now have honest, human-gated mechanisms:
+
+- **Settlement verification:** a dedicated settlement-source record per market
+  (`draft` / `human_verified` / `rejected`; no deletes). Research sources still
+  never verify settlement — only a record a human explicitly marks
+  `human_verified` (requiring a URL, an authority type, and a written
+  verification rationale) counts as the resolution authority. A verified
+  record satisfies the risk engine's `settlement_source` check through a pure
+  overlay in `lib/dossier` that flips the understanding's settlement status to
+  `'provided'` — **`lib/risk` is byte-for-byte unchanged** and remains the
+  sole verdict authority. Resolution clarity is evaluated independently: an
+  ambiguous market still SKIPs with a verified settlement source.
+- **Paper decision journal:** human-confirmed, simulated decision snapshots
+  only. An entry records the decision context at log time — paper price (the
+  current YES ask; never a stale last price), implied probability, fair range,
+  expected edge, confidence, thesis text, the verified settlement record, the
+  full risk checklist, and a market snapshot. There is **no stake, no contract
+  count, no PnL, no open/closed lifecycle, no settlement outcome, and no
+  portfolio** — those would smuggle brokerage semantics into a paper-only
+  desk. Entries are YES-side only in V1 and can only be archived afterwards,
+  never deleted.
+- **Server-side eligibility:** the journal POST re-derives the full dossier on
+  the server from current market data plus persisted research and returns 409
+  unless the deterministic verdict is `PAPER_TRADE`. Client-side state can
+  never create an entry the rules would refuse.
+- **Second mutation namespace:** `/api/paper-journal/**` (GET/POST/PATCH only)
+  joins `/api/research/**` as the only routes that write anything, enforced by
+  the route-aware safety tests.
+
+No paper PnL, no NO-side entries, no settlement-outcome tracking, no
+calibration, and no execution code exist — all deliberately deferred. This
 project makes no claims of profitability; nothing in it is evidence of edge.
 
 ## Local Setup
@@ -102,16 +134,31 @@ Automated tests never call the network; they run against checked-in fixtures in
 - If the live API call fails, the API route serves checked-in fixture data instead.
   Fixture responses are labeled `source: 'fixture'` and the UI shows a
   "FIXTURE — NOT LIVE DATA" banner. Fixture data is never presented as live.
+- **Fixture toggle (Phase 4):** setting `KALSHI_MARKETS_SOURCE=fixture` makes the
+  server skip the live fetch and serve the checked-in fixtures deliberately
+  (still labeled `source: 'fixture'`, with the same UI banner). It is a
+  read-only data-sourcing switch, read per request only inside
+  `app/api/markets/loadMarkets.ts` — it changes where market data comes from
+  and nothing else. The fixtures include one clearly synthetic market,
+  `SYNTH-PAPER-DEMO`, that can pass the deterministic market-quality checks so
+  the full research → settlement-verification → thesis → `PAPER_TRADE` →
+  paper-journal path can be exercised end to end without real market data:
 
-## Local Persistence (Phase 3)
+  ```bash
+  KALSHI_MARKETS_SOURCE=fixture npm run dev -- --port 3456
+  ```
+
+## Local Persistence (Phases 3–4)
 
 - Research notes (sources, manual briefs, fair-probability estimates, theses)
+  plus the Phase 4 settlement-verification records and paper decision entries
   persist to a local SQLite file at `.kalshi-os/kalshi-os.sqlite`. The directory
   is gitignored and never committed.
 - The data directory can be overridden with the `KALSHI_DATA_DIR` environment
   variable (used by tests; read only inside `lib/research-store/db.ts`).
-- The store holds research and thesis records only — no orders, no positions,
-  no account data, no keys.
+- The store holds research, thesis, settlement-verification, and paper
+  decision-snapshot records only — no orders, no positions, no PnL, no account
+  data, no keys.
 
 ## Start Here
 

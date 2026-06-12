@@ -1,7 +1,7 @@
 # ARCHITECTURE.md
 
-Status: Phase 0 planning document, updated with the Phase 1, Phase 2, and Phase 3 as-built records.
-Date: 2026-06-11
+Status: Phase 0 planning document, updated with the Phase 1, Phase 2, Phase 3, and Phase 4 as-built records.
+Date: 2026-06-12
 
 Core principle: **LLM recommends. Rules permit. Human approves. Execution obeys.**
 
@@ -127,6 +127,67 @@ Behavioral notes:
   may export GET/POST/PATCH only; no PUT/DELETE anywhere; no mutations outside
   `/api/research/**`; no route path contains trading/account/auth/wallet
   segments. New routes are checked automatically.
+
+## Phase 4 module boundaries (2026-06-12, approved)
+
+Phase 4 adds (1) human-verified settlement-source records and (2) a paper-only
+decision journal. Settlement verification is **resolution-authority verification**
+— a dedicated record confirming who settles the market — and is deliberately
+separate from research evidence: Phase 3 research sources, including accepted
+`official_resolution_source` rows, never verify settlement. The risk engine is
+byte-unchanged; a verified settlement record reaches it only through a **pure
+settlement overlay in `lib/dossier`** that flips the understanding's settlement
+status to `'provided'` before evaluation (composition, not rule change).
+
+Phase 4 keeps the SQLite core housed in lib/research-store for continuity; a
+future lib/local-store refactor is deferred.
+
+| Path | Responsibility | Boundary |
+|---|---|---|
+| `lib/dossier/applySettlementVerification.ts` | Pure overlay: a `human_verified` settlement snapshot sets `settlementSourceStatus: 'provided'` on a NEW understanding object; draft/rejected/absent records change nothing. | Pure (no DB/fetch/env/clock); never touches resolution clarity or ambiguity flags; `lib/dossier` still imports nothing from `lib/research-store`; `lib/risk` unchanged. |
+| `lib/paper/` | Pure paper-decision eligibility rules (`evaluatePaperEligibility(dossier)`): eligible only when the deterministic verdict is `PAPER_TRADE`. | Pure logic only — no persistence, no routes, no execution, no PnL/lifecycle concepts. Eligibility is read from the risk verdict, never decided independently. |
+| `lib/research-store/settlementSources.ts` | CRUD for settlement-source records (`draft` / `human_verified` / `rejected`; no deletes); "active verified" = latest `human_verified` row. | Same store conventions: explicit db handle, injected timestamps, server-side validation. |
+| `lib/research-store/paperJournal.ts` | Paper decision entries: simulated decision snapshots only (create, list, archive). No stake, contracts, PnL, lifecycle, settlement outcome, or portfolio data. | Entries are creatable only from a server-validated `PAPER_TRADE`-eligible dossier; archive-only mutation after creation. |
+| `lib/research-store/snapshot.ts` | `toPersistedResearchSnapshot(state)`: maps persisted research state (incl. settlement records) to the structural dossier snapshot DTO, shared by client and server. | Store → dossier-types import direction only; the reverse stays forbidden. |
+| `app/api/research/[ticker]/settlement-source/**` | Settlement-source routes (GET/POST/PATCH only) inside the existing research mutation namespace. | Same rules as all `/api/research/**` routes: no PUT/DELETE, thin handlers, injected timestamp per request. |
+| `app/api/paper-journal/**` | Paper-only decision-journal routes (GET/POST/PATCH only). POST re-derives the dossier server-side and rejects (409) anything that is not `PAPER_TRADE`. | Second and last permitted mutation namespace in V1. No trading/account/credential surfaces; route-aware safety tests enforce GET/POST/PATCH and forbidden-segment rules automatically. |
+| `app/api/markets/loadMarkets.ts` | Shared server market loader (fetch + fixture fallback + junk filter) extracted from the markets route, reused by the paper-journal POST. | Read-only. The only file that reads the read-only `KALSHI_MARKETS_SOURCE=fixture` toggle (per-call), used for deterministic smoke/testing; never a mutation surface. |
+
+## Phase 4 as built (2026-06-12)
+
+Phase 4 implemented settlement verification and the paper decision journal exactly
+within the approved boundaries above. Actual structure:
+
+| Path | Contents |
+|---|---|
+| `lib/research-store/` (additions) | Migration v2 in `migrations.ts`; `schema.ts` gains `market_settlement_sources` and `paper_decision_entries` DDL (+ ticker indexes); `types.ts` gains the settlement/paper enums, `SettlementSourceRow/Record`, `VerifiedSettlementSummary`, `PaperDecisionEntryRow/Record`, and extends `ResearchSummary` (`verifiedSettlementSource`) and `ResearchStateResponse` (`settlementSources`); `validation.ts` gains `validateSettlementSourceInput` (strict field requirements for `human_verified`) and `validatePaperEntryInput`; `settlementSources.ts` (create/list/get/update + `getActiveVerifiedSettlementSource`); `paperJournal.ts` (create/list/get/archive — archive is the only post-creation mutation); `snapshot.ts` (`toPersistedResearchSnapshot`, shared by client and server); `summary.ts` recomputes `verifiedSettlementSource` from current rows on every read and its ticker UNION includes `market_settlement_sources` |
+| `lib/dossier/` (additions) | `applySettlementVerification.ts` (pure overlay; only path that ever yields `settlementSourceStatus: 'provided'`); `PersistedSettlementVerificationSnapshot` in `types.ts`; `PersistedResearchSnapshot` gains optional `settlementVerification`; `buildMarketDossierWithResearch` applies the overlay to the understanding before risk evaluation |
+| `lib/paper/` | `types.ts` (`PaperEligibility`), `eligibility.ts` (`evaluatePaperEligibility(dossier)`: eligible only when the verdict is `PAPER_TRADE` and a current YES ask exists; reads the verdict, never recomputes it) |
+| `app/api/research/[ticker]/settlement-source/` | `route.ts` (GET state + active verified summary; POST create, default `draft`), `[settlementSourceId]/route.ts` (PATCH; transitions into `human_verified` re-run the strict validator and 400 on failure) |
+| `app/api/paper-journal/` | `route.ts` (GET all entries), `[ticker]/route.ts` (GET per ticker), `[ticker]/entries/route.ts` (POST; server re-derives the dossier and returns 409 unless the verdict is `PAPER_TRADE` and a current YES ask exists), `entries/[entryId]/route.ts` (PATCH; body exactly `{status:'archived'}`) |
+| `app/api/markets/` | `loadMarkets.ts` (`loadCurrentMarkets()`: live fetch + fixture fallback + junk filter + per-call `KALSHI_MARKETS_SOURCE` read); `route.ts` is now a thin GET wrapper |
+| `components/market-detail/` (additions) | `SettlementVerificationPanel.tsx` (after the contract-understanding panel), `PaperJournalPanel.tsx` (after the risk panel; log button enabled only on a `PAPER_TRADE` verdict, rendered disabled otherwise); `researchActions.ts` gains settlement and paper-journal action types |
+| `tests/` (additions) | `settlement-api`, `settlement-overlay` (includes the first real-pipeline `PAPER_TRADE` end-to-end), `paper-journal-store`, `paper-journal-api`; `safety-routes`, `research-api`, `research-store-*`, and `fixture-parsing` extended |
+| `tests/fixtures/` | Synthetic market `SYNTH-PAPER-DEMO` (+ matching event) appended so the full pipeline can reach `PAPER_TRADE` deterministically in fixture mode; it derives `settlementSourceStatus: 'unverified'` like any market — the overlay is never special-cased |
+
+Dependency directions (unchanged and re-verified):
+
+- `lib/dossier` still imports nothing from `lib/research-store`; settlement
+  verification crosses the boundary as the plain structural
+  `PersistedSettlementVerificationSnapshot` DTO. The dossier purity scan still
+  passes over every `lib/dossier` file.
+- **`lib/risk` has zero changes — byte-for-byte identical.** The overlay only
+  changes an input value (`settlementSourceStatus`) that the unchanged
+  `settlement_source` check already knew how to read.
+- `lib/paper` is pure logic with no persistence, routes, or clock; it consumes
+  a composed dossier and re-states the engine's verdict as eligibility.
+- `better-sqlite3` remains confined to `lib/research-store`; the paper-journal
+  routes reach storage only through store functions with injected timestamps.
+
+The planned-layout row for `lib/paper/` below ("entries, exits, paper PnL") is
+superseded for V1 by this phase: the as-built journal records decision
+snapshots only — exits, paper PnL, and outcome tracking stay deferred to a
+future explicitly approved phase.
 
 ## Planned directory layout (future phases)
 

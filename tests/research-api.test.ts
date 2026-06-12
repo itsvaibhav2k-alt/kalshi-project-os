@@ -33,6 +33,7 @@ const EMPTY_SUMMARY = {
   hasFairProbability: false,
   hasReadyThesis: false,
   researchConfidence: 'low',
+  verifiedSettlementSource: null,
 };
 
 let dataDir: string;
@@ -178,6 +179,7 @@ describe('research API routes', () => {
         'hasHumanReviewedBrief',
         'hasReadyThesis',
         'researchConfidence',
+        'verifiedSettlementSource',
       ]);
       const serialized = JSON.stringify(body);
       expect(serialized).not.toContain('CPI release schedule');
@@ -221,6 +223,7 @@ describe('research API routes', () => {
         brief: null,
         probabilityEstimate: null,
         thesis: null,
+        settlementSources: [],
         summary: EMPTY_SUMMARY,
       });
     });

@@ -1,7 +1,7 @@
 # Safety Model
 
 Status: Phase 0 constitution document. Binding on all future sessions and agents.
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 Core principle: LLM recommends. Rules permit. Human approves. Execution obeys.
 
@@ -140,6 +140,66 @@ requiring explicit human approval.
 
 This section was added under the human-approved Phase 3 plan and is recorded in
 `docs/DECISION_LOG.md`.
+
+## (h) Phase 4 additions: settlement verification + paper decision journal (human-approved)
+
+Phase 4 added two narrowly scoped capabilities under the human-approved Phase 4
+plan. Both are recorded in `docs/DECISION_LOG.md`. The (g) boundary between
+research-shaped mutations and forbidden trading mutations is unchanged in kind.
+
+**Settlement verification (still a research-namespace mutation):**
+
+- A dedicated settlement-source record per market (`draft` / `human_verified` /
+  `rejected`; no deletes) lives under
+  `/api/research/[ticker]/settlement-source/**`. Research sources still never
+  verify settlement; only a record a human explicitly marks `human_verified`
+  (with URL, authority type, and a written verification rationale) counts.
+- A verified record satisfies the risk engine's `settlement_source` check via a
+  pure overlay in `lib/dossier` — **`lib/risk` is byte-unchanged**, the
+  overlay never touches resolution clarity or ambiguity flags, and the
+  deterministic engine remains the sole verdict authority. Rejecting the
+  record immediately withdraws verification everywhere.
+
+**Paper decision journal (`/api/paper-journal/**` — the second and last
+permitted mutation namespace in V1):**
+
+- Entries are simulated decision snapshots only: price, fair range, edge,
+  confidence, thesis, settlement record, risk checklist, market snapshot.
+  There are **no stake, contract-count, PnL, open/closed-lifecycle, settlement
+  outcome, or portfolio fields** — the schema cannot represent them, and a test
+  audits the columns. Nothing in the journal touches any marketplace.
+- An entry can be created only when the server re-derives the full dossier and
+  the deterministic verdict is `PAPER_TRADE` (anything else → 409, with the
+  failing risk reasons). Client state never bypasses the rules; a human still
+  triggers every entry. The only post-creation mutation is archiving; archived
+  rows persist as an audit trail.
+- The namespace exports GET/POST/PATCH only (no PUT/DELETE), enforced by the
+  same route-aware safety tests; trading, account, credential, and execution
+  surfaces remain forbidden everywhere.
+
+**`KALSHI_MARKETS_SOURCE` (read-only data-sourcing toggle):**
+
+- Setting `KALSHI_MARKETS_SOURCE=fixture` makes the server market loader serve
+  the checked-in fixtures (always labeled `source: 'fixture'`, with the UI
+  banner) instead of fetching live data. It is read per call, only inside
+  `app/api/markets/loadMarkets.ts`, and changes nothing but where market data
+  comes from — it is not a mutation surface and cannot weaken any check. Its
+  purpose is deterministic testing and end-to-end smoke of the paper-only
+  pipeline via the clearly synthetic `SYNTH-PAPER-DEMO` fixture market, which
+  passes through the same understanding/overlay/risk path as every other
+  market with no special-casing.
+
+**Safety-scan carve-out for settlement-domain terms (human-approved):**
+
+- Settlement verification needs the domain word "authority" (e.g. the
+  `authority_type` column naming the resolution authority), which collided
+  with the safety scan's `auth` token ban. The approved forbidden-token
+  pattern is now `/\b(order|buy|sell|auth(?!orit)|wallet|account)/i`: it
+  permits exactly `authority`, `authorities`, `authority_type`, and
+  `authoritative`, while still forbidding `auth`, `authentication`,
+  `authorization`, `authToken`, `authHeader`, auth keys, and every trading
+  token. Unit tests pin both the allowed and forbidden word lists so the
+  carve-out cannot silently widen.
 
 ---
 

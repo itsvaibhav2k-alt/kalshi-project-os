@@ -3,14 +3,17 @@
  *
  * Type-only module: the panels collect human-typed research input and hand it
  * to callbacks implemented in `app/page.tsx`, which performs the actual
- * `/api/research/**` fetches. Research and thesis records are the ONLY
- * mutations in V1 — nothing here touches trading, and nothing here carries
- * verdict authority. Probabilities cross this boundary as fractions in
+ * `/api/research/**` and `/api/paper-journal/**` fetches. Research, thesis,
+ * settlement-verification, and paper-only decision-journal records are the
+ * ONLY mutations in V1 — nothing here touches trading, and nothing here
+ * carries verdict authority. Probabilities cross this boundary as fractions in
  * [0, 1]; the forms convert from percent before calling back.
  */
 
 import type {
   Confidence,
+  SettlementAuthorityType,
+  SettlementVerificationStatus,
   SourceCredibility,
   SourceKind,
   SourceStatus,
@@ -70,6 +73,33 @@ export interface ThesisFormPayload {
   invalidationCriteria: string;
 }
 
+/**
+ * Human-entered fields for a settlement-source record. Research sources never
+ * verify settlement; only a record verified by a human can satisfy the
+ * deterministic settlement-source risk check, and even then the risk engine
+ * alone issues verdicts. 'human_verified' triggers the strict server checks.
+ */
+export interface SettlementSourcePayload {
+  status: SettlementVerificationStatus;
+  title: string;
+  url: string;
+  publisher: string;
+  authorityType: SettlementAuthorityType | null;
+  notes: string;
+  verificationRationale: string;
+}
+
+/** Review patch for an existing settlement-source record (all mutable fields). */
+export interface SettlementSourcePatch {
+  status?: SettlementVerificationStatus;
+  title?: string;
+  url?: string | null;
+  publisher?: string | null;
+  authorityType?: SettlementAuthorityType | null;
+  notes?: string | null;
+  verificationRationale?: string | null;
+}
+
 /** Mutation callbacks the page supplies to the detail panels. */
 export interface ResearchActions {
   addSource: (payload: AddSourcePayload) => Promise<MutationOutcome>;
@@ -78,4 +108,24 @@ export interface ResearchActions {
   saveFairRange: (payload: FairRangeFormPayload) => Promise<MutationOutcome>;
   /** Creates when `thesisId` is null; otherwise patches the existing thesis. */
   saveThesis: (payload: ThesisFormPayload, thesisId: string | null) => Promise<MutationOutcome>;
+  /** Adds a new settlement-source record (POST). */
+  saveSettlementSource: (payload: SettlementSourcePayload) => Promise<MutationOutcome>;
+  /** Reviews/edits one settlement-source record (PATCH). */
+  updateSettlementSource: (
+    settlementSourceId: string,
+    patch: SettlementSourcePatch,
+  ) => Promise<MutationOutcome>;
+}
+
+/**
+ * Paper-journal mutation callbacks the page supplies to the journal panel.
+ * Entries are simulated decision records only: the server re-validates the
+ * deterministic PAPER_TRADE verdict before writing anything, no real money is
+ * involved, and archived rows persist as an audit trail (no deletes).
+ */
+export interface PaperJournalActions {
+  /** Logs one paper decision for the selected market (POST; server-gated). */
+  logPaperDecision: () => Promise<MutationOutcome>;
+  /** Archives one journal entry (PATCH; the only permitted entry change). */
+  archiveEntry: (entryId: string) => Promise<MutationOutcome>;
 }

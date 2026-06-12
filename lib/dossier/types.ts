@@ -49,6 +49,33 @@ export interface PersistedSourceSnapshot {
 }
 
 /**
+ * Minimal structural view of one persisted settlement-verification record.
+ *
+ * Mirrors the `PersistedSourceSnapshot` precedent: defined locally with
+ * structural string fields so this module never imports from the research
+ * store. Research sources never verify settlement; only a record whose
+ * `status` is 'human_verified' affects the dossier, and even then it only
+ * adjusts the understanding's settlement fields — the deterministic risk
+ * engine still issues every verdict.
+ */
+export interface PersistedSettlementVerificationSnapshot {
+  /** Stable id of the persisted settlement-verification record. */
+  id: string;
+  /** Human-entered title of the resolution authority record. */
+  title: string;
+  /** Authority URL, or null when none was recorded. */
+  url: string | null;
+  /** Publishing organization, or null when none was recorded. */
+  publisher: string | null;
+  /** Authority classification label (structural copy of the store enum). */
+  authorityType: string;
+  /** Verification status; only 'human_verified' affects the dossier. */
+  status: string;
+  /** ISO 8601 timestamp of the record's last update. */
+  updatedAt: string;
+}
+
+/**
  * Plain-data snapshot of the persisted research state for one market.
  *
  * Built by the caller from the research API responses and passed in as data —
@@ -75,6 +102,12 @@ export interface PersistedResearchSnapshot {
   hasReadyThesis: boolean;
   /** Full source records for the selected market; absent in bulk summaries. */
   sources?: readonly PersistedSourceSnapshot[];
+  /**
+   * Active settlement-verification record, when one exists. Optional for
+   * back-compat: callers built before settlement verification omit it, which
+   * behaves exactly like null — the settlement overlay never applies.
+   */
+  settlementVerification?: PersistedSettlementVerificationSnapshot | null;
 }
 
 /**

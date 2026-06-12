@@ -26,6 +26,7 @@ import { buildNotRunBrief } from '@/lib/research/buildResearchBrief';
 import { evaluateTradeCandidate } from '@/lib/risk/evaluateTradeCandidate';
 import { understandMarket } from '@/lib/understanding/understandMarket';
 
+import { applySettlementVerification } from './applySettlementVerification';
 import { mapResearchState } from './mapResearchState';
 import type { EvaluationSummary, MarketDossier, PersistedResearchSnapshot } from './types';
 
@@ -57,7 +58,12 @@ export function buildMarketDossierWithResearch(
   snapshot: PersistedResearchSnapshot | null,
   nowIso: string,
 ): MarketDossier {
-  const understanding = understandMarket(market);
+  // The settlement overlay is the only path to 'provided' settlement status;
+  // it applies only for a human-verified record and never alters clarity.
+  const understanding = applySettlementVerification(
+    understandMarket(market),
+    snapshot === null ? null : snapshot.settlementVerification ?? null,
+  );
   const researchBrief =
     snapshot === null
       ? buildNotRunBrief(market.id, nowIso)

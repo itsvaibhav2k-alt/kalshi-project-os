@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 
 import { getLatestBrief } from './briefs';
 import { getEstimateById, getLatestEstimate } from './probabilityEstimates';
+import { getActiveVerifiedSettlementSource, listSettlementSources } from './settlementSources';
 import { listSources } from './sources';
 import { getActiveThesis } from './theses';
 import type {
@@ -11,7 +12,9 @@ import type {
   ResearchBriefRecord,
   ResearchStateResponse,
   ResearchSummary,
+  SettlementSourceRecord,
   ThesisRecord,
+  VerifiedSettlementSummary,
 } from './types';
 import { deriveBriefState, validateFairRange, validateThesisReady } from './validation';
 
@@ -31,6 +34,8 @@ interface ResearchRecords {
   brief: ResearchBriefRecord | null;
   probabilityEstimate: ProbabilityEstimateRecord | null;
   thesis: ThesisRecord | null;
+  settlementSources: SettlementSourceRecord[];
+  verifiedSettlementSource: VerifiedSettlementSummary | null;
 }
 
 function loadRecords(db: Database.Database, ticker: string): ResearchRecords {
@@ -39,6 +44,8 @@ function loadRecords(db: Database.Database, ticker: string): ResearchRecords {
     brief: getLatestBrief(db, ticker),
     probabilityEstimate: getLatestEstimate(db, ticker),
     thesis: getActiveThesis(db, ticker),
+    settlementSources: listSettlementSources(db, ticker),
+    verifiedSettlementSource: getActiveVerifiedSettlementSource(db, ticker),
   };
 }
 
@@ -80,6 +87,7 @@ function summarizeRecords(db: Database.Database, records: ResearchRecords): Rese
     hasFairProbability,
     hasReadyThesis,
     researchConfidence,
+    verifiedSettlementSource: records.verifiedSettlementSource,
   };
 }
 
@@ -96,6 +104,7 @@ export function listResearchTickers(db: Database.Database): string[] {
        UNION SELECT market_ticker FROM research_briefs
        UNION SELECT market_ticker FROM probability_estimates
        UNION SELECT market_ticker FROM theses
+       UNION SELECT market_ticker FROM market_settlement_sources
        ORDER BY market_ticker ASC`,
     )
     .all() as Array<{ market_ticker: string }>;
@@ -129,6 +138,7 @@ export function getResearchState(db: Database.Database, ticker: string): Researc
     brief: records.brief,
     probabilityEstimate: records.probabilityEstimate,
     thesis: records.thesis,
+    settlementSources: records.settlementSources,
     summary: summarizeRecords(db, records),
   };
 }

@@ -1,8 +1,8 @@
 # DATA_MODEL.md
 
 Status: Phase 0 planning document, updated with the Phase 2 in-memory types and the
-Phase 3 persisted research-store schema.
-Date: 2026-06-11
+Phase 3 / Phase 4 persisted research-store schema.
+Date: 2026-06-12
 
 Constraints:
 
@@ -68,6 +68,45 @@ Conventions (binding; stated once in `lib/research-store/types.ts`):
   queryable for audit.
 - Enum value sets are double-enforced: `validation.ts` is the primary validator
   (HTTP 400 path); the CHECK constraints above are database-level defense only.
+
+## Phase 4 schema additions (2026-06-12)
+
+Migration v2 adds two tables (seven total), same database, same conventions
+(TEXT UUID ids, caller-injected ISO timestamps, fractions in [0, 1], no deletes,
+ticker indexes):
+
+| Table | Purpose | Key columns |
+|---|---|---|
+| `market_settlement_sources` | Human-verified settlement-source records — verification of the resolution authority, deliberately separate from research evidence | `id`, `market_ticker`, `market_id`, `title` (required), `url`, `publisher`, `authority_type` (`kalshi_rules\|official_government_source\|official_organization_source\|exchange_resolution_source\|other`; nullable for drafts), `status` (`draft\|human_verified\|rejected`), `notes`, `verification_rationale`, timestamps |
+| `paper_decision_entries` | Paper-only simulated decision snapshots | `id`, `market_ticker`, `market_id`, `market_title`, `platform`, `side` (CHECK: `YES` only), `paper_price` / `implied_probability` / `fair_low` / `fair_mid` / `fair_high` (REAL fractions in [0, 1], `fair_low <= fair_mid <= fair_high`), `expected_edge` (fraction in [-1, 1]), `confidence` (`low\|medium\|high`), `thesis_id` + `thesis_snapshot` (required), `probability_estimate_id`, `research_source_ids_json`, `research_sources_snapshot_json`, `settlement_source_id` + `settlement_source_snapshot_json` (required), `risk_verdict` (CHECK: `PAPER_TRADE` only), `risk_checklist_json` (required), `risk_reasons_json`, `market_snapshot_json`, `status` (`logged\|archived`), timestamps |
+
+Phase 4 conventions (binding):
+
+- **Active verified settlement source:** the latest row whose *current* status
+  is `human_verified`, selected by `created_at DESC, rowid DESC` (with
+  `authority_type IS NOT NULL` as a defensive guard). Draft and rejected rows
+  never count; a previously verified row that is later rejected stops counting
+  immediately, and the selection falls back to the next-latest verified row, if
+  any. Statuses are mutable via PATCH; rows are never deleted.
+- **Verification field requirements:** a record may be `draft` with only a
+  title, but `human_verified` (at creation or via PATCH transition) requires a
+  non-empty `title`, `url`, a valid `authority_type`, and a written
+  `verification_rationale` — enforced by `validation.ts` and re-checked at the
+  store layer.
+- **Paper entries are snapshots, not trades:** there are deliberately NO
+  stake, contract-count, exit, outcome, PnL, or lifecycle columns (asserted by
+  a column-audit test). `paper_price` is the YES ask at log time as a fraction;
+  the entry is created only through the server-validated `PAPER_TRADE` path,
+  and the `risk_verdict` CHECK makes that the only storable verdict. The only
+  post-creation mutation is `logged` → `archived`; archived rows persist as an
+  audit trail.
+- **Units restated:** every probability-like column is a fraction in [0, 1];
+  cents appear only at display time (`value × 100`).
+
+The `PaperTrade` planning entity below (stake, contracts, exit price, outcome,
+paper PnL) remains documentation-only: `paper_decision_entries` is deliberately
+narrower, and the additional fields stay deferred to a future explicitly
+approved phase.
 
 ## Platform
 
@@ -307,6 +346,7 @@ Aggregated predicted-vs-actual for calibration tracking (Brier score later).
   per scope.
 
 Physical schema for the entities above remains deferred except where the Phase 3
-research-store section documents otherwise (sources, briefs, probability
-estimates, theses). Do not create further schema files from this document without
+and Phase 4 research-store sections document otherwise (sources, briefs,
+probability estimates, theses, settlement-source records, paper decision
+entries). Do not create further schema files from this document without
 explicit approval.

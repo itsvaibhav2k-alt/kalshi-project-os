@@ -9,6 +9,8 @@ import {
   deriveBriefState,
   validateBriefPayload,
   validateFairRange,
+  validatePaperEntryInput,
+  validateSettlementSourceInput,
   validateSourcePayload,
   validateThesisReady,
   validateTicker,
@@ -100,6 +102,41 @@ function validFairRangePayload(): Record<string, unknown> {
     high: 0.4,
     rationale: 'Backed by the accepted NOAA outlook.',
     basis: 'human_entered',
+  };
+}
+
+function draftSettlementPayload(): Record<string, unknown> {
+  return {
+    title: 'Kalshi rules document',
+    status: 'draft',
+  };
+}
+
+function verifiedSettlementPayload(): Record<string, unknown> {
+  return {
+    title: 'Kalshi rules document',
+    url: 'https://kalshi.com/markets/example/rules',
+    publisher: 'Kalshi',
+    authorityType: 'kalshi_rules',
+    status: 'human_verified',
+    verificationRationale: 'URL matches the resolution text in the contract rules.',
+    notes: 'Checked against the market page.',
+  };
+}
+
+function validPaperEntryPayload(): Record<string, unknown> {
+  return {
+    side: 'YES',
+    riskVerdict: 'PAPER_TRADE',
+    paperPrice: 0.42,
+    impliedProbability: 0.43,
+    fairLow: 0.5,
+    fairMid: 0.55,
+    fairHigh: 0.6,
+    expectedEdge: 0.13,
+    thesisSnapshot: 'Market underprices the documented base rate.',
+    settlementSourceSnapshotJson: JSON.stringify({ id: 'set-1', title: 'Kalshi rules document' }),
+    riskChecklistJson: JSON.stringify([{ id: 'resolution_clarity', status: 'pass' }]),
   };
 }
 
@@ -632,5 +669,351 @@ describe('validateThesisReady', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('validateSettlementSourceInput', () => {
+  it('should pass when a draft has only a non-empty title', () => {
+    const result = validateSettlementSourceInput(draftSettlementPayload());
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should pass when a human_verified record has title, url, authorityType, and rationale', () => {
+    const result = validateSettlementSourceInput(verifiedSettlementPayload());
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should pass when status is rejected with only a title', () => {
+    const result = validateSettlementSourceInput({ ...draftSettlementPayload(), status: 'rejected' });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should pass when a draft has a valid optional url and authorityType', () => {
+    const payload = {
+      ...draftSettlementPayload(),
+      url: 'https://www.noaa.gov/outlook',
+      authorityType: 'official_government_source',
+    };
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should fail when title is missing', () => {
+    const payload = draftSettlementPayload();
+    delete payload.title;
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('title'))).toBe(true);
+  });
+
+  it('should fail when title is whitespace only', () => {
+    const result = validateSettlementSourceInput({ ...draftSettlementPayload(), title: '   ' });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when status is not in the union', () => {
+    const result = validateSettlementSourceInput({ ...draftSettlementPayload(), status: 'verified' });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('status'))).toBe(true);
+  });
+
+  it('should fail when a draft url is not a valid http(s) URL', () => {
+    const result = validateSettlementSourceInput({ ...draftSettlementPayload(), url: 'not a url' });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('url'))).toBe(true);
+  });
+
+  it('should fail when a draft authorityType is not in the union', () => {
+    const payload = { ...draftSettlementPayload(), authorityType: 'blog_post' };
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('authorityType'))).toBe(true);
+  });
+
+  it('should fail when human_verified is missing the url', () => {
+    const payload = verifiedSettlementPayload();
+    delete payload.url;
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('url'))).toBe(true);
+  });
+
+  it('should fail when human_verified has a non-http url', () => {
+    const payload = { ...verifiedSettlementPayload(), url: 'ftp://example.com' };
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when human_verified is missing the authorityType', () => {
+    const payload = verifiedSettlementPayload();
+    delete payload.authorityType;
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('authorityType'))).toBe(true);
+  });
+
+  it('should fail when human_verified has an invalid authorityType', () => {
+    const payload = { ...verifiedSettlementPayload(), authorityType: 'blog_post' };
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when human_verified is missing the verificationRationale', () => {
+    const payload = verifiedSettlementPayload();
+    delete payload.verificationRationale;
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('verificationRationale'))).toBe(true);
+  });
+
+  it('should fail when human_verified has a whitespace-only verificationRationale', () => {
+    const payload = { ...verifiedSettlementPayload(), verificationRationale: '  ' };
+
+    const result = validateSettlementSourceInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when payload is not an object', () => {
+    const result = validateSettlementSourceInput('nonsense');
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('should fail when payload is null', () => {
+    const result = validateSettlementSourceInput(null);
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('validatePaperEntryInput', () => {
+  it('should pass when side is YES, verdict is PAPER_TRADE, and all snapshots are present', () => {
+    const result = validatePaperEntryInput(validPaperEntryPayload());
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should pass when probability fields sit exactly on the 0 and 1 boundaries', () => {
+    const payload = {
+      ...validPaperEntryPayload(),
+      paperPrice: 0,
+      impliedProbability: 1,
+      fairLow: 0,
+      fairMid: 0.5,
+      fairHigh: 1,
+    };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should pass when the fair range values are all equal', () => {
+    const payload = { ...validPaperEntryPayload(), fairLow: 0.3, fairMid: 0.3, fairHigh: 0.3 };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should pass when expectedEdge is negative within bounds', () => {
+    // Shape-level check only: the deterministic risk engine alone gates eligibility
+    const payload = { ...validPaperEntryPayload(), expectedEdge: -0.2 };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should fail when side is NO', () => {
+    const result = validatePaperEntryInput({ ...validPaperEntryPayload(), side: 'NO' });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('side'))).toBe(true);
+  });
+
+  it('should fail when side is missing', () => {
+    const payload = validPaperEntryPayload();
+    delete payload.side;
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when riskVerdict is SKIP', () => {
+    const result = validatePaperEntryInput({ ...validPaperEntryPayload(), riskVerdict: 'SKIP' });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('riskVerdict'))).toBe(true);
+  });
+
+  it('should fail when riskVerdict is WATCH', () => {
+    const result = validatePaperEntryInput({ ...validPaperEntryPayload(), riskVerdict: 'WATCH' });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when riskVerdict is missing', () => {
+    const payload = validPaperEntryPayload();
+    delete payload.riskVerdict;
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when paperPrice is below 0', () => {
+    const payload = { ...validPaperEntryPayload(), paperPrice: -0.0001 };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('paperPrice'))).toBe(true);
+  });
+
+  it('should fail when paperPrice is above 1', () => {
+    const payload = { ...validPaperEntryPayload(), paperPrice: 1.0001 };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when impliedProbability is not a number', () => {
+    const payload = { ...validPaperEntryPayload(), impliedProbability: '0.43' };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('impliedProbability'))).toBe(true);
+  });
+
+  it('should fail when fairMid is NaN', () => {
+    const payload = { ...validPaperEntryPayload(), fairMid: Number.NaN };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when fairMid is below fairLow', () => {
+    const payload = { ...validPaperEntryPayload(), fairLow: 0.6, fairMid: 0.5, fairHigh: 0.7 };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('fair'))).toBe(true);
+  });
+
+  it('should fail when fairHigh is below fairMid', () => {
+    const payload = { ...validPaperEntryPayload(), fairLow: 0.4, fairMid: 0.6, fairHigh: 0.5 };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when expectedEdge is not finite', () => {
+    const payload = { ...validPaperEntryPayload(), expectedEdge: Number.POSITIVE_INFINITY };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('expectedEdge'))).toBe(true);
+  });
+
+  it('should fail when expectedEdge is above 1', () => {
+    const payload = { ...validPaperEntryPayload(), expectedEdge: 1.5 };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when thesisSnapshot is missing', () => {
+    const payload = validPaperEntryPayload();
+    delete payload.thesisSnapshot;
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('thesisSnapshot'))).toBe(true);
+  });
+
+  it('should fail when thesisSnapshot is whitespace only', () => {
+    const payload = { ...validPaperEntryPayload(), thesisSnapshot: '   ' };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when settlementSourceSnapshotJson is missing', () => {
+    const payload = validPaperEntryPayload();
+    delete payload.settlementSourceSnapshotJson;
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('settlementSourceSnapshotJson'))).toBe(true);
+  });
+
+  it('should fail when riskChecklistJson is missing', () => {
+    const payload = validPaperEntryPayload();
+    delete payload.riskChecklistJson;
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('riskChecklistJson'))).toBe(true);
+  });
+
+  it('should fail when payload is not an object', () => {
+    const result = validatePaperEntryInput(42);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('should collect multiple errors when several rules fail at once', () => {
+    const payload = {
+      side: 'NO',
+      riskVerdict: 'SKIP',
+      paperPrice: 1.5,
+      thesisSnapshot: '',
+    };
+
+    const result = validatePaperEntryInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThanOrEqual(4);
   });
 });

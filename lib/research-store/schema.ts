@@ -125,3 +125,82 @@ CREATE TABLE IF NOT EXISTS theses (
 export const THESES_TICKER_INDEX_DDL = `
 CREATE INDEX IF NOT EXISTS idx_theses_ticker ON theses (market_ticker);
 `;
+
+/**
+ * Human-verified settlement-source records (Phase 4). Research sources never
+ * satisfy the settlement-source risk check; only a record here with status
+ * 'human_verified' counts as the resolution authority. authority_type is
+ * nullable so drafts can be saved before the authority is chosen; the
+ * validator requires it for 'human_verified'. No deletes: reject instead.
+ */
+export const MARKET_SETTLEMENT_SOURCES_DDL = `
+CREATE TABLE IF NOT EXISTS market_settlement_sources (
+  id TEXT PRIMARY KEY,
+  market_ticker TEXT NOT NULL,
+  market_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  url TEXT,
+  publisher TEXT,
+  authority_type TEXT CHECK (authority_type IN (
+    'kalshi_rules', 'official_government_source', 'official_organization_source',
+    'exchange_resolution_source', 'other'
+  )),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'human_verified', 'rejected')),
+  notes TEXT,
+  verification_rationale TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
+export const MARKET_SETTLEMENT_SOURCES_TICKER_INDEX_DDL = `
+CREATE INDEX IF NOT EXISTS idx_market_settlement_sources_ticker
+  ON market_settlement_sources (market_ticker);
+`;
+
+/**
+ * Paper decision journal entries (Phase 4). Simulated decision snapshots
+ * only: no stake, no contract count, no PnL, no lifecycle, no settlement
+ * outcome. Created only from a server-validated PAPER_TRADE dossier; the
+ * risk_verdict CHECK makes that the only storable verdict. Archived rows
+ * remain as an audit trail. All probability-like columns are fractions in
+ * [0, 1]; expected_edge is a fraction difference in [-1, 1].
+ */
+export const PAPER_DECISION_ENTRIES_DDL = `
+CREATE TABLE IF NOT EXISTS paper_decision_entries (
+  id TEXT PRIMARY KEY,
+  market_ticker TEXT NOT NULL,
+  market_id TEXT NOT NULL,
+  market_title TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  side TEXT NOT NULL CHECK (side IN ('YES')),
+  paper_price REAL NOT NULL CHECK (paper_price >= 0.0 AND paper_price <= 1.0),
+  implied_probability REAL NOT NULL
+    CHECK (implied_probability >= 0.0 AND implied_probability <= 1.0),
+  fair_low REAL NOT NULL CHECK (fair_low >= 0.0 AND fair_low <= 1.0),
+  fair_mid REAL NOT NULL CHECK (fair_mid >= 0.0 AND fair_mid <= 1.0),
+  fair_high REAL NOT NULL CHECK (fair_high >= 0.0 AND fair_high <= 1.0),
+  expected_edge REAL NOT NULL CHECK (expected_edge >= -1.0 AND expected_edge <= 1.0),
+  confidence TEXT NOT NULL CHECK (confidence IN ('low', 'medium', 'high')),
+  thesis_id TEXT NOT NULL,
+  thesis_snapshot TEXT NOT NULL,
+  probability_estimate_id TEXT,
+  research_source_ids_json TEXT,
+  research_sources_snapshot_json TEXT,
+  settlement_source_id TEXT NOT NULL,
+  settlement_source_snapshot_json TEXT NOT NULL,
+  risk_verdict TEXT NOT NULL CHECK (risk_verdict IN ('PAPER_TRADE')),
+  risk_checklist_json TEXT NOT NULL,
+  risk_reasons_json TEXT,
+  market_snapshot_json TEXT,
+  status TEXT NOT NULL CHECK (status IN ('logged', 'archived')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CHECK (fair_low <= fair_mid AND fair_mid <= fair_high)
+);
+`;
+
+export const PAPER_DECISION_ENTRIES_TICKER_INDEX_DDL = `
+CREATE INDEX IF NOT EXISTS idx_paper_decision_entries_ticker
+  ON paper_decision_entries (market_ticker);
+`;
