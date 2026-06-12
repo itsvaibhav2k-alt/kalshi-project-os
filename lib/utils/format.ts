@@ -91,6 +91,22 @@ export function formatFreshness(fetchedAtIso: string, nowMs: number): string {
 }
 
 /**
+ * Formats a probability fraction as a whole percentage.
+ *
+ * Rounds to whole percent on purpose: advisory estimates carry no
+ * decimal-point precision worth displaying.
+ *
+ * @param p - Probability as a fraction in [0, 1], or null when not available
+ * @returns e.g. "41%", or "—" for null
+ */
+export function formatProbability(p: number | null): string {
+  if (p === null || !Number.isFinite(p)) {
+    return EM_DASH;
+  }
+  return `${Math.round(p * 100)}%`;
+}
+
+/**
  * Renders a cent price as an implied percentage.
  *
  * @param cents - Price in cents (0-100), or null when not provided
