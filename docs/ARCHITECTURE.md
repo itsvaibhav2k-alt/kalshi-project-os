@@ -1,0 +1,116 @@
+# ARCHITECTURE.md
+
+Status: Phase 0 planning document. Defines module boundaries for future phases.
+Date: 2026-06-11
+
+Core principle: **LLM recommends. Rules permit. Human approves. Execution obeys.**
+
+Kalshi Project OS is Kalshi-first, event-market-native, and Polymarket-ready. The
+architecture is platform-agnostic: shared engines operate on normalized data; only
+connectors and platform-specific signal modules know platform details.
+
+## Planned directory layout (NOT yet created)
+
+None of these directories exist yet. **Do not create them before Phase 1 is explicitly
+approved by the human.** This file is the plan, not a scaffold instruction.
+
+| Path | Responsibility | Notes |
+|---|---|---|
+| `lib/platforms/` | `MarketConnector` interface, `KalshiConnector`, `PolymarketConnector`, normalization | No trading credentials in V1 |
+| `lib/risk/` | Deterministic risk engine | LLM-free. No AI imports, ever. Sole verdict authority |
+| `lib/paper/` | Paper-trading journal: entries, exits, paper PnL | No real orders |
+| `lib/research/` | Source-grounded research engine, contract understanding, AI briefs | Advisory output only |
+| `lib/strategies/` | Strategy modules (weather, stale-market, econ-release, etc.) | Emit `StrategySignal` only |
+| `lib/wallet-intelligence/` | Polymarket smart-wallet tracking and scoring | Emits signals, never trades. Future phase |
+| `lib/backtesting/` | Historical strategy evaluation | Future phase |
+| `lib/simulation/` | Probability/outcome simulation, distributions | Future phase |
+| `lib/relationship-graph/` | Related-market / cross-platform consistency signals | Signal-only. Future phase |
+| `lib/telemetry/` | Pipeline-stage visibility, audit logs, dashboards data | No dopamine UX |
+| `lib/calibration/` | Predicted-vs-actual tracking, calibration bins, Brier score later | |
+| `lib/db/` | Persistence access layer | Physical schema designed in a later phase |
+| `scripts/` | Operational scripts (snapshots, settlement checks) | No order placement scripts in V1 |
+| `tests/` | Unit + integration tests | Risk engine requires exhaustive deterministic tests |
+
+## MarketConnector interface (concept only — pseudocode, no source files yet)
+
+```text
+interface MarketConnector
+  platform(): PlatformId                       // 'kalshi' | 'polymarket'
+  capabilities(): ConnectorCapabilities        // feature flags, see below
+  fetchMarkets(filter): NormalizedMarket[]     // active markets, normalized fields
+  fetchMarketDetail(marketId): NormalizedMarketDetail
+                                               // rules text, resolution criteria,
+                                               // settlement source, expiry, status
+  fetchOrderbookOrPrices(marketId): PriceState // bid/ask, spread, depth where available
+  fetchSnapshot(marketId): MarketSnapshot      // point-in-time prices/volume/OI
+
+ConnectorCapabilities (flags, examples):
+  hasOrderbook: bool          // Kalshi yes; Polymarket per market type
+  hasOpenInterest: bool
+  hasWalletVisibility: bool   // Polymarket-only; Kalshi likely false
+  hasPublicTraderActivity: bool
+```
+
+Connector rules:
+
+- Connectors are read-only market-data adapters in V1. No order endpoints, no trading
+  API keys, no account/auth secrets. Market-data access only.
+- Platform-specific capabilities are flagged, not assumed. Shared engines must check
+  `capabilities()` instead of hardcoding platform behavior.
+- All connector output is normalized before any shared engine touches it.
+
+## Shared engines vs platform-specific modules
+
+Shared (operate on normalized data, platform-agnostic):
+
+- Market normalization, contract understanding, research engine, probability engine,
+  risk engine, paper-trading engine, calibration engine, strategy framework.
+
+Platform-specific:
+
+- `KalshiConnector`: market/orderbook/volume/open-interest signals.
+- `PolymarketConnector`: market data plus public wallet/trader activity.
+- `lib/wallet-intelligence/`: Polymarket-oriented; degrades to disabled on platforms
+  without wallet visibility.
+
+## Data-flow pipeline — V1 (Training Wheels Mode, paper-only)
+
+```text
+01 Scan            -> pull + normalize markets (connectors)
+02 Understand      -> parse contract wording, resolution criteria, settlement source
+03 Research/Predict-> gather sources, build AIBrief, estimate fair probability range
+04 Validate/Risk   -> deterministic risk engine: SKIP | WATCH | PAPER_TRADE
+05 Paper/Simulate  -> log PaperTrade with thesis; simulate where applicable
+06 Settle/Learn    -> record Outcome, paper PnL, update calibration + scorecards
+```
+
+## Future locked pipeline (NOT V1)
+
+```text
+01 Scan -> 02 Understand -> 03 Research/Predict -> 04 Validate/Risk
+        -> 05 Size -> 06 Execute -> 07 Settle/Learn
+```
+
+The execution module is isolated and locked. It does not exist in V1, is never imported
+by V1 code paths, and is unlocked only in a future phase with explicit human approval.
+No market orders. No auto-trading.
+
+## Boundary rules (enforced in review and tests)
+
+1. Strategies emit `StrategySignal` objects only. They never place trades, paper or
+   real, and never call the paper engine directly.
+2. The risk engine is the sole verdict authority. Only it produces SKIP / WATCH /
+   PAPER_TRADE (and the locked REAL_TRADE_ELIGIBLE_LATER in future phases).
+3. The risk engine is deterministic and LLM-free: hard-coded rules, no model calls,
+   no prompt-derived thresholds.
+4. LLM components (research, briefs, summaries) are advisory only. LLM output never
+   approves, sizes, or executes anything.
+5. Wallet-intelligence output is a signal input to research/risk, never an approval.
+6. Connectors never contain trading credentials in V1. No API keys or secrets in repo.
+7. Default verdict is SKIP. Ambiguous resolution criteria, wide spread, thin liquidity,
+   small edge, or missing thesis all force SKIP.
+
+## Definition of done for this document
+
+- A future session can name every planned module and its boundary without re-asking.
+- No directory listed here is created until Phase 1 approval.

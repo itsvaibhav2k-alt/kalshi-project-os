@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalshi Project OS — Training Wheels Dashboard · State B: Paper-Trade Path (Static Mockup)</title>
+<!--
+  STATIC DESIGN MOCKUP — VISUAL REFERENCE ARTIFACT ONLY.
+  All data on this page is fake sample data for design exploration.
+  No API calls, no JavaScript, no dependencies, no real markets, no real prices.
+  This is NOT the Phase 1 implementation. See docs/ROADMAP.md.
+-->
+<style>
+  :root {
+    --paper: #f6f3ec;
+    --paper-deep: #efeadf;
+    --panel: #fbf9f4;
+    --ink: #1c2533;
+    --ink-soft: #4a5468;
+    --ink-faint: #8b91a0;
+    --hairline: #d9d2c2;
+    --hairline-soft: #e6e0d2;
+    --skip: #5d6678;        /* calm slate — SKIP is healthy, never alarming */
+    --skip-bg: #e9e9e6;
+    --watch: #2f6f6a;       /* muted teal */
+    --watch-bg: #e2edeb;
+    --paper-trade: #8a6520; /* restrained ochre */
+    --paper-trade-bg: #f2e9d4;
+    --locked: #7a3b3b;      /* dried-ink red, reserved for the lock + failed checks */
+    --locked-bg: #f0e3e0;
+    --pass: #4a7050;        /* sage, low saturation */
+    --serif: "Charter", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --mono: "SF Mono", "Menlo", "Consolas", "Liberation Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #fffdf8 0%, var(--paper) 55%),
+      var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1.45;
+    padding: 28px 36px 48px;
+  }
+
+  /* ---------- shared atoms ---------- */
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .num  { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 2px 8px 1px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .chip.skip        { color: var(--skip); background: var(--skip-bg); border: 1px solid #d4d4cf; }
+  .chip.watch       { color: var(--watch); background: var(--watch-bg); border: 1px solid #c8dbd8; }
+  .chip.paper-trade { color: var(--paper-trade); background: var(--paper-trade-bg); border: 1px solid #e3d4ad; }
+  .chip.locked      { color: var(--locked); background: var(--locked-bg); border: 1px solid #ddc4bf; }
+  .chip.neutral     { color: var(--ink-soft); background: var(--paper-deep); border: 1px solid var(--hairline); }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    box-shadow: 0 1px 0 rgba(28,37,51,0.04);
+  }
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+  .panel-head h2 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .panel-head .note { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); }
+
+  table { border-collapse: collapse; width: 100%; }
+  th {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    text-align: left;
+    padding: 8px 10px 6px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--hairline-soft);
+    font-size: 13.5px;
+    vertical-align: baseline;
+  }
+  td.num, th.num { text-align: right; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ---------- masthead ---------- */
+  header.masthead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 10px;
+  }
+  .masthead h1 {
+    font-size: 27px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .masthead h1 .os { color: var(--ink-faint); font-weight: 400; }
+  .masthead .principle {
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    margin-top: 2px;
+  }
+  .badge-row { display: flex; gap: 8px; align-items: center; }
+  .mode-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    padding: 6px 12px;
+    border: 1.5px solid var(--ink);
+    color: var(--ink);
+    background: var(--panel);
+  }
+  .lock-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    padding: 6px 12px;
+    border: 1.5px solid var(--locked);
+    color: var(--locked);
+    background: var(--locked-bg);
+  }
+  .lock-badge::before { content: "▣ "; }
+
+  /* ---------- status strip ---------- */
+  .status-strip {
+    display: flex;
+    gap: 28px;
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    padding: 8px 0 18px;
+    flex-wrap: wrap;
+  }
+  .status-strip b { font-weight: 600; color: var(--ink); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; position: relative; top: -1px; }
+  .dot.ok      { background: var(--pass); }
+  .dot.planned { background: transparent; border: 1.5px solid var(--ink-faint); }
+
+  /* ---------- pipeline ---------- */
+  .pipeline {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--hairline);
+    background: var(--panel);
+    margin-bottom: 22px;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .stage {
+    flex: 1;
+    padding: 10px 14px 9px;
+    border-right: 1px solid var(--hairline-soft);
+  }
+  .stage:last-child { border-right: none; }
+  .stage .label { display: block; margin-bottom: 2px; }
+  .stage .count { font-family: var(--mono); font-size: 19px; font-weight: 500; }
+  .stage .sub { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+  .stage.locked-stage { background: repeating-linear-gradient(-45deg, var(--paper-deep), var(--paper-deep) 4px, var(--panel) 4px, var(--panel) 8px); }
+
+  /* ---------- layout grid ---------- */
+  .grid-top {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+  .grid-bottom {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: 18px;
+  }
+  .detail-stack { display: flex; flex-direction: column; gap: 18px; }
+  @media (max-width: 1100px) {
+    .grid-top, .grid-bottom { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- scanner filters ---------- */
+  .filter-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+  .fchip {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    padding: 3px 9px 2px;
+    border: 1px solid var(--hairline);
+    border-radius: 2px;
+    color: var(--ink-soft);
+    background: var(--paper-deep);
+  }
+  .fchip.active { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .fchip.sep { border: none; background: none; color: var(--ink-faint); padding: 3px 2px 2px; }
+  .scanner-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    padding: 9px 16px 11px;
+    border-top: 1px solid var(--hairline-soft);
+  }
+  .spark { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: -0.06em; }
+  .spark.up   { color: var(--watch); }
+  .spark.down { color: var(--ink-faint); }
+  .star { color: var(--ink-faint); font-size: 12px; }
+  .star.on { color: var(--paper-trade); }
+  .why-badge {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--ink-faint);
+    letter-spacing: 0.05em;
+  }
+  .why-badge::before { content: "· "; }
+
+  /* ---------- decision memo ---------- */
+  .memo {
+    margin: 0 16px 14px;
+    border: 1px solid var(--hairline);
+    border-radius: 2px;
+    background: var(--paper-deep);
+  }
+  .memo-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--hairline-soft);
+    font-size: 12.5px;
+  }
+  .memo-row:last-child { border-bottom: none; }
+  .memo-row .k { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); letter-spacing: 0.06em; }
+  .memo-row .v { font-family: var(--mono); font-size: 11px; text-align: right; }
+  .memo-row .v.required { color: var(--locked); font-weight: 700; }
+  .memo-row .v.ok { color: var(--pass); }
+
+  /* ---------- action row (no-action by design) ---------- */
+  .action-row {
+    display: flex;
+    gap: 10px;
+    padding: 0 16px 14px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding: 8px 14px;
+    border-radius: 2px;
+    border: 1px solid var(--hairline);
+    text-align: center;
+  }
+  .btn.disabled {
+    color: var(--ink-faint);
+    background: repeating-linear-gradient(-45deg, var(--paper-deep), var(--paper-deep) 3px, var(--panel) 3px, var(--panel) 6px);
+    border-style: dashed;
+  }
+  .btn.passive {
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--ink-soft);
+  }
+  .btn .sub { display: block; font-size: 9px; color: var(--ink-faint); letter-spacing: 0.04em; margin-top: 2px; }
+
+  /* ---------- scanner ---------- */
+  .scanner tr.selected td { background: #f1ecdf; }
+  .scanner tr.selected td:first-child { border-left: 3px solid var(--ink); padding-left: 8px; }
+  .scanner td.title-cell { max-width: 280px; }
+  .scanner .cat { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); display: block; margin-top: 1px; }
+  .scanner tr:hover td { background: #f4f0e6; }
+  .scanner tr.selected:hover td { background: #f1ecdf; }
+
+  /* ---------- market detail ---------- */
+  .detail-body { padding: 14px 16px 16px; }
+  .detail-body h3 { font-size: 18px; font-weight: 600; margin-bottom: 2px; }
+  .detail-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin-bottom: 14px; }
+  .rule-block {
+    border-left: 2px solid var(--hairline);
+    padding: 2px 0 2px 12px;
+    margin: 10px 0 14px;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+  }
+  .rule-block .label { display: block; margin-bottom: 3px; }
+  .kv-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px 14px;
+    margin: 14px 0 4px;
+  }
+  .kv .label { display: block; margin-bottom: 1px; }
+  .kv .v { font-family: var(--mono); font-size: 14.5px; }
+  .ambig-flag {
+    margin-top: 14px;
+    padding: 9px 12px;
+    background: var(--locked-bg);
+    border: 1px solid #ddc4bf;
+    border-radius: 2px;
+    font-size: 13px;
+    color: var(--locked);
+  }
+  .ambig-flag .label { color: var(--locked); display: block; margin-bottom: 2px; }
+
+  /* ---------- risk verdict ---------- */
+  .verdict-banner {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+  .verdict-word {
+    font-family: var(--mono);
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--skip);
+  }
+  .verdict-banner .why { font-size: 13px; color: var(--ink-soft); font-style: italic; }
+  .checks td:first-child { font-family: var(--mono); font-size: 12.5px; }
+  .check-mark { font-family: var(--mono); font-size: 12px; }
+  .check-mark.pass { color: var(--pass); }
+  .check-mark.fail { color: var(--locked); font-weight: 700; }
+  .reasons { padding: 12px 16px 14px; }
+  .reasons .label { display: block; margin-bottom: 6px; }
+  .reasons ol { margin-left: 18px; }
+  .reasons li { font-size: 13.5px; margin-bottom: 4px; color: var(--ink-soft); }
+  .reasons li b { color: var(--ink); font-weight: 600; }
+  .verdict-foot {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    padding: 9px 16px 11px;
+    border-top: 1px solid var(--hairline-soft);
+  }
+
+  /* ---------- journal ---------- */
+  .thesis { font-style: italic; color: var(--ink-soft); font-size: 12.5px; max-width: 260px; }
+  .pnl-pos { color: var(--pass); }
+  .pnl-neg { color: var(--locked); }
+  .journal-foot {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    padding: 9px 16px 11px;
+    border-top: 1px solid var(--hairline-soft);
+  }
+
+  /* ---------- calibration ---------- */
+  .cal-body { padding: 14px 16px 16px; }
+  .cal-row { display: grid; grid-template-columns: 86px 1fr 120px; gap: 12px; align-items: center; margin-bottom: 8px; }
+  .cal-row .label { letter-spacing: 0.06em; }
+  .bar-track { height: 10px; background: var(--paper-deep); border: 1px solid var(--hairline-soft); position: relative; }
+  .bar-fill { position: absolute; top: 0; left: 0; bottom: 0; background: var(--ink-soft); opacity: 0.75; }
+  .bar-tick { position: absolute; top: -3px; bottom: -3px; width: 1.5px; background: var(--ink); }
+  .cal-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+  .cal-note { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin-top: 10px; }
+  .scorecard th, .scorecard td { padding-left: 16px; }
+  .paused { color: var(--ink-faint); font-style: italic; }
+
+  /* ---------- skip-health ---------- */
+  .skip-health {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 13px 16px;
+    border-top: 1px solid var(--hairline-soft);
+    background: linear-gradient(0deg, var(--paper-deep), var(--panel));
+  }
+  .skip-health .big { font-family: var(--mono); font-size: 26px; font-weight: 600; }
+  .skip-health .desc { font-size: 13px; color: var(--ink-soft); font-style: italic; }
+
+  /* ---------- footer ---------- */
+  footer {
+    margin-top: 26px;
+    padding-top: 14px;
+    border-top: 2px solid var(--ink);
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  footer .principle-foot { font-style: italic; font-size: 14px; }
+  footer .disclaimer {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    max-width: 560px;
+    text-align: right;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ MASTHEAD ============ -->
+<header class="masthead">
+  <div>
+    <h1>Kalshi Project <span class="os">OS</span></h1>
+    <p class="principle">LLM recommends. Rules permit. Human approves. Execution obeys.</p>
+  </div>
+  <div class="badge-row">
+    <span class="mode-badge">TRAINING WHEELS — PAPER ONLY</span>
+    <span class="lock-badge">LIVE TRADING LOCKED</span>
+  </div>
+</header>
+
+<!-- ============ STATUS STRIP ============ -->
+<div class="status-strip">
+  <span><span class="dot ok"></span><b>KALSHI</b> read-only · connected (sample)</span>
+  <span><span class="dot planned"></span><b>POLYMARKET</b> planned · not connected</span>
+  <span>data as of <b>2026-06-11 14:32 ET</b> · snapshot age 41s (sample)</span>
+  <span>risk engine <b>deterministic v0 — design preview</b></span>
+  <span>session <b>read-only</b> · no order paths exist</span>
+  <span>mockup state <b>B — positive paper-trade path</b> · default path: <a href="training-wheels-dashboard.html" style="color:var(--ink-soft)">state A</a></span>
+</div>
+
+<!-- ============ PIPELINE ============ -->
+<section class="pipeline" aria-label="V1 pipeline">
+  <div class="stage"><span class="label">01 Scan</span><span class="count">312</span> <span class="sub">markets</span></div>
+  <div class="stage"><span class="label">02 Understand</span><span class="count">64</span> <span class="sub">parsed</span></div>
+  <div class="stage"><span class="label">03 Research / Predict</span><span class="count">18</span> <span class="sub">briefed</span></div>
+  <div class="stage"><span class="label">04 Validate / Risk</span><span class="count">18</span> <span class="sub">checked</span></div>
+  <div class="stage"><span class="label">05 Paper / Simulate</span><span class="count">3</span> <span class="sub">open</span></div>
+  <div class="stage"><span class="label">06 Settle / Learn</span><span class="count">9</span> <span class="sub">settled</span></div>
+  <div class="stage locked-stage"><span class="label">Execute</span><span class="count" style="color:var(--locked)">—</span> <span class="sub">locked until approved phase</span></div>
+</section>
+
+<!-- ============ TOP GRID: SCANNER + DETAIL ============ -->
+<div class="grid-top">
+
+  <!-- Market Scanner -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Market Scanner</h2>
+      <span class="note">read-only · 312 scanned · 8 shown · sample data</span>
+    </div>
+    <div class="filter-row">
+      <span class="fchip active">ALL</span>
+      <span class="fchip">WEATHER</span>
+      <span class="fchip">ECONOMICS</span>
+      <span class="fchip">POLITICS</span>
+      <span class="fchip">FINANCIALS</span>
+      <span class="fchip sep">|</span>
+      <span class="fchip active">SKIP</span>
+      <span class="fchip active">WATCH</span>
+      <span class="fchip active">PAPER_TRADE</span>
+      <span class="fchip sep">|</span>
+      <span class="fchip">spread ≤ 4¢</span>
+      <span class="fchip">OI ≥ 1k</span>
+      <span class="fchip">expiry ≤ 30d</span>
+      <span class="fchip">★ watchlist</span>
+    </div>
+    <table class="scanner">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Market</th>
+          <th class="num">Yes</th>
+          <th class="num">Spread</th>
+          <th class="num">Vol</th>
+          <th class="num">OI</th>
+          <th class="num">24h</th>
+          <th>Expiry</th>
+          <th>Verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="selected">
+          <td class="star on">★</td>
+          <td class="title-cell">NYC high temp ≥ 88°F on Jun 12<span class="cat">WEATHER · KALSHI <span class="why-badge">all checks pass · thesis written</span></span></td>
+          <td class="num">41¢</td><td class="num">2¢</td><td class="num">18.2k</td><td class="num">9.1k</td>
+          <td class="num"><span class="spark up">▂▂▃▃▅▆</span></td>
+          <td class="num">Jun 12</td><td><span class="chip paper-trade">PAPER_TRADE</span></td>
+        </tr>
+        <tr>
+          <td class="star on">★</td>
+          <td class="title-cell">June CPI YoY at or above 3.0%<span class="cat">ECONOMICS · KALSHI <span class="why-badge">watch: awaiting BLS print Jun 17</span></span></td>
+          <td class="num">27¢</td><td class="num">3¢</td><td class="num">41.7k</td><td class="num">22.4k</td>
+          <td class="num"><span class="spark down">▅▄▄▃▃▂</span></td>
+          <td class="num">Jul 15</td><td><span class="chip watch">WATCH</span></td>
+        </tr>
+        <tr>
+          <td class="star">☆</td>
+          <td class="title-cell">Hurricane makes U.S. landfall before Jul 31<span class="cat">WEATHER · KALSHI <span class="why-badge">skip: ambiguous rules · spread 9¢</span></span></td>
+          <td class="num">12¢</td><td class="num">9¢</td><td class="num">3.4k</td><td class="num">1.9k</td>
+          <td class="num"><span class="spark">▃▃▂▃▃▃</span></td>
+          <td class="num">Jul 31</td><td><span class="chip skip">SKIP</span></td>
+        </tr>
+        <tr>
+          <td class="star">☆</td>
+          <td class="title-cell">Fed holds rates at July meeting<span class="cat">ECONOMICS · KALSHI <span class="why-badge">skip: edge &lt; 5¢ min after costs</span></span></td>
+          <td class="num">78¢</td><td class="num">2¢</td><td class="num">63.0k</td><td class="num">38.5k</td>
+          <td class="num"><span class="spark">▄▄▄▅▄▄</span></td>
+          <td class="num">Jul 29</td><td><span class="chip skip">SKIP</span></td>
+        </tr>
+        <tr>
+          <td class="star">☆</td>
+          <td class="title-cell">Government shutdown begins by Oct 1<span class="cat">POLITICS · KALSHI <span class="why-badge">skip: no written thesis</span></span></td>
+          <td class="num">33¢</td><td class="num">4¢</td><td class="num">12.6k</td><td class="num">7.7k</td>
+          <td class="num"><span class="spark up">▂▃▃▄▄▅</span></td>
+          <td class="num">Oct 1</td><td><span class="chip skip">SKIP</span></td>
+        </tr>
+        <tr>
+          <td class="star">☆</td>
+          <td class="title-cell">Initial jobless claims above 240k (Jun 18 print)<span class="cat">ECONOMICS · KALSHI <span class="why-badge">skip: spread 5¢ &gt; 4¢ limit</span></span></td>
+          <td class="num">55¢</td><td class="num">5¢</td><td class="num">5.9k</td><td class="num">3.2k</td>
+          <td class="num"><span class="spark">▄▃▄▄▃▄</span></td>
+          <td class="num">Jun 18</td><td><span class="chip skip">SKIP</span></td>
+        </tr>
+        <tr>
+          <td class="star on">★</td>
+          <td class="title-cell">Named storm forms in Atlantic before Jun 30<span class="cat">WEATHER · KALSHI <span class="why-badge">watch: NHC genesis odds rising</span></span></td>
+          <td class="num">64¢</td><td class="num">3¢</td><td class="num">8.8k</td><td class="num">4.6k</td>
+          <td class="num"><span class="spark up">▂▃▄▄▅▆</span></td>
+          <td class="num">Jun 30</td><td><span class="chip watch">WATCH</span></td>
+        </tr>
+        <tr>
+          <td class="star">☆</td>
+          <td class="title-cell">S&amp;P 500 closes above 7,000 on Jun 30<span class="cat">FINANCIALS · KALSHI <span class="why-badge">skip: spread 6¢ · no edge vs book</span></span></td>
+          <td class="num">22¢</td><td class="num">6¢</td><td class="num">29.3k</td><td class="num">15.0k</td>
+          <td class="num"><span class="spark down">▆▅▄▄▃▃</span></td>
+          <td class="num">Jun 30</td><td><span class="chip skip">SKIP</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="scanner-foot">
+      <span>★ = watchlist · 24h = price movement, muted by design · skip reasons shown inline</span>
+      <span>source freshness: markets 41s · orderbook 12s · rules cache 6h (sample)</span>
+    </div>
+  </section>
+
+  <!-- Market Detail + Risk Verdict -->
+  <div class="detail-stack">
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Market Detail</h2>
+        <span class="note">selected from scanner</span>
+      </div>
+      <div class="detail-body">
+        <h3>NYC high temp ≥ 88°F on Jun 12</h3>
+        <p class="detail-meta">KALSHI · WEATHER · expires Jun 12 2026 · contract NYTEMP-88-26 (sample)</p>
+
+        <div class="rule-block">
+          <span class="label">Resolution rule (as listed)</span>
+          “Resolves YES if the maximum temperature recorded at Central Park station (KNYC) on June 12 is 88°F or higher.”
+        </div>
+        <div class="rule-block">
+          <span class="label">Settlement source</span>
+          NWS Central Park (KNYC) daily climate report — <em>specific station and product pinned in rules.</em>
+        </div>
+
+        <div class="kv-grid">
+          <div class="kv"><span class="label">Yes bid / ask</span><span class="v">39¢ / 41¢</span></div>
+          <div class="kv"><span class="label">Implied prob.</span><span class="v">~41%</span></div>
+          <div class="kv"><span class="label">Fair est. (range)</span><span class="v">52–58%</span></div>
+          <div class="kv"><span class="label">Confidence</span><span class="v">MEDIUM</span></div>
+          <div class="kv"><span class="label">Volume 24h</span><span class="v">18.2k</span></div>
+          <div class="kv"><span class="label">Open interest</span><span class="v">9.1k</span></div>
+          <div class="kv"><span class="label">Time to expiry</span><span class="v">1d</span></div>
+          <div class="kv"><span class="label">AI brief</span><span class="v">3 sources</span></div>
+        </div>
+
+        <div class="rule-block" style="margin-top:14px">
+          <span class="label">Evidence (AI brief — advisory only)</span>
+          NWS point forecast 90°F · KNYC station bias +1.2°F vs gridded forecast over last 30 days · historical June distribution supports 52–58% fair range. Sources: NWS forecast, KNYC climate records, station-bias log.
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Risk Verdict</h2>
+        <span class="note">deterministic · LLM has no vote</span>
+      </div>
+      <div class="verdict-banner">
+        <span class="verdict-word" style="color:var(--paper-trade)">PAPER_TRADE</span>
+        <span class="why">11 of 11 checks pass — paper only, capped, human still approves.</span>
+      </div>
+      <table class="checks">
+        <tbody>
+          <tr><td>paper_only_mode</td><td>enforced — V1</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>resolution_clarity</td><td>station + threshold pinned</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>settlement_source</td><td>NWS KNYC daily climate report</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>max_spread</td><td>2¢ ≤ 4¢ limit</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>min_liquidity</td><td>OI 9.1k ≥ 1.0k floor</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>min_edge_after_costs</td><td>11–17¢ ≥ 5¢ min</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>min_confidence</td><td>MEDIUM ≥ MEDIUM · 3 sources</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>written_thesis</td><td>present — journal #013</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>max_stake</td><td>$2.00 ≤ $2.00 cap</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>daily_loss_cooldown</td><td>0 losses today &lt; 2 limit</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+          <tr><td>platform_restrictions</td><td>Kalshi weather — allowed</td><td class="num"><span class="check-mark pass">PASS ✓</span></td></tr>
+        </tbody>
+      </table>
+      <div class="reasons">
+        <span class="label">Conditions of eligibility</span>
+        <ol>
+          <li><b>Paper only.</b> This verdict permits a journal entry, never an order. No order path exists in V1.</li>
+          <li><b>Stake capped.</b> $2.00 maximum paper stake; exposure and cooldown limits remain in force.</li>
+          <li><b>Human approves.</b> The verdict permits; it does not act. A human writes the journal entry.</li>
+        </ol>
+      </div>
+      <div class="memo">
+        <div class="memo-row"><span class="k">HUMAN THESIS</span><span class="v ok">PRESENT — JOURNAL #013</span></div>
+        <div class="memo-row"><span class="k">AI BRIEF</span><span class="v">ADVISORY ONLY · 3 SOURCES</span></div>
+        <div class="memo-row"><span class="k">DECISION MEMO</span><span class="v ok">ELIGIBLE — PAPER ONLY · $2.00 MAX STAKE</span></div>
+      </div>
+      <div class="action-row">
+        <span class="btn disabled">REAL TRADING — DISABLED<span class="sub">locked until approved execution phase</span></span>
+        <span class="btn passive">LOG PAPER TRADE<span class="sub">$2.00 max · requires human confirmation</span></span>
+        <span class="btn passive">CREATE WATCHLIST NOTE<span class="sub">always available</span></span>
+      </div>
+      <div class="verdict-foot">RiskCheck #0043 logged 2026-06-11 14:32 ET · thresholds: human-reviewed constants · verdict whitelist: SKIP / WATCH / PAPER_TRADE</div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ============ BOTTOM GRID: JOURNAL + CALIBRATION ============ -->
+<div class="grid-bottom">
+
+  <!-- Paper Journal -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Paper Journal</h2>
+      <span class="note">3 open · 9 settled · every entry requires a written thesis</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th><th>Side</th><th class="num">Entry</th><th class="num">Stake</th>
+          <th>Thesis (excerpt)</th><th>Status</th><th class="num">Paper P&amp;L</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>NYC high ≥ 88°F Jun 12</td><td class="mono">YES</td><td class="num">41¢</td><td class="num">$2.00</td>
+          <td class="thesis">“NWS point forecast 90°F; station bias +1.2°F; fair 52–58% vs 41¢ ask.”</td>
+          <td><span class="chip neutral">OPEN</span></td><td class="num">—</td>
+        </tr>
+        <tr>
+          <td>May CPI YoY ≥ 3.0%</td><td class="mono">NO</td><td class="num">71¢</td><td class="num">$2.00</td>
+          <td class="thesis">“Consensus 2.8%; shelter decelerating per BLS; fair NO 78–84%.”</td>
+          <td><span class="chip neutral">SETTLED · YES→NO</span></td><td class="num pnl-pos">+$0.74</td>
+        </tr>
+        <tr>
+          <td>Named storm by May 31</td><td class="mono">YES</td><td class="num">58¢</td><td class="num">$2.00</td>
+          <td class="thesis">“NHC invest 91L at 70% genesis; fair 70–80% vs 58¢ ask.”</td>
+          <td><span class="chip neutral">SETTLED · NO</span></td><td class="num pnl-neg">−$1.16</td>
+        </tr>
+        <tr>
+          <td>Fed holds rates — June</td><td class="mono">YES</td><td class="num">88¢</td><td class="num">$2.00</td>
+          <td class="thesis">“FOMC pause guidance; fair 93–96%; thin edge accepted as calibration rep.”</td>
+          <td><span class="chip neutral">SETTLED · YES</span></td><td class="num pnl-pos">+$0.24</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="journal-foot">cumulative paper P&amp;L −$0.18 across 9 settled · sample size far too small to mean anything · no profitability is claimed or implied</div>
+  </section>
+
+  <!-- Calibration & Scorecards -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Calibration &amp; Scorecards</h2>
+      <span class="note">predicted vs realized · settled paper trades only</span>
+    </div>
+    <div class="cal-body">
+      <div class="cal-row">
+        <span class="label">20–40% bin</span>
+        <div class="bar-track"><div class="bar-fill" style="width:33%"></div><div class="bar-tick" style="left:30%"></div></div>
+        <span class="cal-meta">pred 30% · real 33% · n=3</span>
+      </div>
+      <div class="cal-row">
+        <span class="label">40–60% bin</span>
+        <div class="bar-track"><div class="bar-fill" style="width:50%"></div><div class="bar-tick" style="left:52%"></div></div>
+        <span class="cal-meta">pred 52% · real 50% · n=2</span>
+      </div>
+      <div class="cal-row">
+        <span class="label">60–80% bin</span>
+        <div class="bar-track"><div class="bar-fill" style="width:50%"></div><div class="bar-tick" style="left:72%"></div></div>
+        <span class="cal-meta">pred 72% · real 50% · n=2</span>
+      </div>
+      <div class="cal-row">
+        <span class="label">80–100% bin</span>
+        <div class="bar-track"><div class="bar-fill" style="width:100%"></div><div class="bar-tick" style="left:94%"></div></div>
+        <span class="cal-meta">pred 94% · real 100% · n=2</span>
+      </div>
+      <p class="cal-note">Brier score: deferred — requires ≥ 50 settled predictions before it is meaningful. Bars = realized frequency · tick = mean predicted.</p>
+    </div>
+    <table class="scorecard">
+      <thead>
+        <tr><th>Strategy</th><th class="num">Signals</th><th class="num">Realized edge</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Weather model</td><td class="num">14</td><td class="num">+2.1¢ avg</td><td><span class="chip neutral">ACTIVE</span></td></tr>
+        <tr><td>Econ release</td><td class="num">6</td><td class="num">insufficient n</td><td><span class="chip neutral">ACTIVE</span></td></tr>
+        <tr><td>Stale-market detector</td><td class="num">3</td><td class="num paused">−4.0¢ avg</td><td><span class="chip skip">PAUSED</span></td></tr>
+        <tr><td>Smart-wallet (Polymarket)</td><td class="num">—</td><td class="num">—</td><td><span class="chip locked">FUTURE PHASE</span></td></tr>
+        <tr><td>Relationship graph</td><td class="num">—</td><td class="num">—</td><td><span class="chip locked">FUTURE PHASE</span></td></tr>
+      </tbody>
+    </table>
+    <div class="skip-health">
+      <span class="big">83%</span>
+      <span class="desc">of risk-checked candidates were skipped this week. A high SKIP rate is the system working as designed — serious desks mostly say no.</span>
+    </div>
+  </section>
+
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div>
+    <p class="principle-foot">“Build the machine first. Prove edge on paper. Mostly say no.”</p>
+  </div>
+  <p class="disclaimer">
+    STATIC DESIGN MOCKUP — every number, market, price, trade, and metric on this page is fake sample
+    data for visual exploration only. No live data, no API calls, no JavaScript. This artifact is not
+    an app, not Phase 1, not financial advice, and makes no claim of profitability.
+    Kalshi-first · Polymarket-ready · V1 Training Wheels Mode · docs/mockups/training-wheels-dashboard-paper-trade.html
+  </p>
+</footer>
+
+</body>
+</html>

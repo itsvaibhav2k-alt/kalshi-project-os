@@ -1,0 +1,252 @@
+# DATA_MODEL.md
+
+Status: Phase 0 planning document. Documentation-only entity definitions.
+Date: 2026-06-11
+
+Constraints:
+
+- No schema files, no ORM code, no migrations in Phase 0. The physical schema
+  (database, tables, indexes) is designed in a later phase.
+- Field types below are logical (string, number, enum, datetime, json), not vendor
+  types.
+- All entities are platform-agnostic; platform-specific fields live in `raw` payloads.
+
+## Platform
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string enum | 'kalshi' \| 'polymarket' |
+| name | string | Display name |
+| capabilities | json | Connector capability flags (e.g. hasWalletVisibility, hasOrderbook) |
+| status | enum | active \| planned \| disabled |
+
+## Market
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| platformId | string | FK -> Platform |
+| externalId | string | Platform-native market/ticker id |
+| title | string | Market question |
+| category | string | weather, economics, politics, sports, crypto, etc. |
+| rulesText | string | Exact contract rules |
+| resolutionCriteria | string | How the market resolves |
+| settlementSource | string | Who/what determines resolution |
+| expiry | datetime | Expiration/resolution time |
+| status | enum | active \| closed \| settled |
+| ambiguityFlag | boolean | Set when wording/resolution is ambiguous (forces SKIP) |
+
+## MarketSnapshot
+
+Point-in-time price state. Append-only.
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketId | string | FK -> Market |
+| capturedAt | datetime | Snapshot time |
+| yesPrice / noPrice | number | Last/mid prices (0–1) |
+| bid / ask | number | Best bid/ask |
+| spread | number | ask − bid |
+| volume | number | Traded volume |
+| openInterest | number \| null | Where the platform exposes it |
+| liquidityScore | number \| null | Derived liquidity measure |
+| raw | json | Platform-native payload for audit |
+
+## WatchlistItem
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketId | string | FK -> Market |
+| reason | string | Why it is being watched |
+| sourceSignalId | string \| null | FK -> StrategySignal / WalletSignal / GraphSignal |
+| createdAt | datetime | When added |
+| status | enum | watching \| promoted \| dropped |
+
+## PaperTrade
+
+Every idea is logged before real money. Fields per the master brief:
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| platform | string | FK -> Platform |
+| market | string | FK -> Market |
+| side | enum | YES \| NO |
+| entryPrice | number | Price at paper entry (0–1) |
+| paperStake | number | Paper dollars committed |
+| contracts | number | Paper contract count |
+| thesis | string | Written thesis — required; no trade without it |
+| fairProbability | number | System's fair-probability estimate at entry |
+| confidence | enum | low \| medium \| high |
+| plannedExit | string | Exit plan (price/time/condition) |
+| reasonForTrade | string | Why this trade over SKIP |
+| riskChecklist | json | RiskCheck results snapshot at entry |
+| timestamp | datetime | Entry time |
+| exitPrice | number \| null | Price at paper exit |
+| outcome | string \| null | FK -> Outcome once settled |
+| paperPnL | number \| null | Realized paper profit/loss |
+
+## RiskCheck
+
+One deterministic risk-engine evaluation. Append-only audit record.
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketId | string | FK -> Market |
+| signalId | string \| null | FK -> StrategySignal that triggered evaluation |
+| evaluatedAt | datetime | When evaluated |
+| checks | json | Per-rule pass/fail: resolution clarity, settlement source, spread, liquidity, edge threshold, confidence, written thesis, stake/exposure limits, cooldown/loss limits, platform restrictions |
+| verdict | enum | SKIP \| WATCH \| PAPER_TRADE \| REAL_TRADE_ELIGIBLE_LATER (locked; never issued in V1) |
+| failReasons | string[] | Human-readable reasons for SKIP |
+
+## ProbabilityEstimate
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketId | string | FK -> Market |
+| createdAt | datetime | Estimate time |
+| marketImpliedProb | number | From current prices |
+| fairProbLow / fairProbMid / fairProbHigh | number | Estimated fair range |
+| expectedEdge | number | fairProbMid − marketImpliedProb (pre spread/fees) |
+| confidence | enum | low \| medium \| high |
+| uncertaintyNotes | string | Reasons the estimate could be wrong |
+| sourceIds | string[] | Evidence sources used (no source = low confidence) |
+
+## AIBrief
+
+Advisory only. Never approves or executes anything.
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketId | string | FK -> Market |
+| createdAt | datetime | Generation time |
+| contractExplanation | string | What the contract asks, how it resolves |
+| evidenceSummary | string | What the sources say |
+| risks | string | What could go wrong |
+| probabilityRange | string | Reasonable range per the brief |
+| citations | json | Source URLs/references; missing citations cap confidence at low |
+| model | string | Which model produced it (audit) |
+
+## StrategySignal
+
+Strategies emit signals only; the risk engine decides.
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketId | string | FK -> Market |
+| platformId | string | FK -> Platform |
+| strategyName | string | e.g. weather-model, stale-market, econ-release |
+| createdAt | datetime | Emission time |
+| fairProbability | number \| json | Point or range |
+| expectedEdge | number | Estimated edge |
+| confidence | enum | low \| medium \| high |
+| evidence | json | Supporting data/citations |
+| reasonsToSkip | string[] | Strategy's own caveats |
+
+## Wallet (Polymarket-oriented; future phase)
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| platformId | string | FK -> Platform (wallet visibility is Polymarket-only) |
+| address | string | Wallet address or trader profile id |
+| nickname | string \| null | If available |
+| categoriesTraded | string[] | Where the wallet is active |
+| firstSeenAt / lastSeenAt | datetime | Activity window |
+
+## WalletSnapshot
+
+Periodic performance capture per wallet. Append-only.
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| walletId | string | FK -> Wallet |
+| capturedAt | datetime | Snapshot time |
+| realizedPnL | number | Historical realized PnL |
+| roi | number | Return on investment |
+| winRate | number | Win rate |
+| avgTradeSize | number | Average trade size |
+| categoryStrengths | json | Per-category performance |
+| consistencyScore | number | Many repeatable wins vs one lucky trade |
+| recentPerformance | json | Recency-weighted results |
+| maxDrawdown | number | Risk taken |
+
+## WalletSignal
+
+Signal, not a trade. Never auto-copied.
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| walletId | string | FK -> Wallet |
+| marketId | string | FK -> Market |
+| createdAt | datetime | Detection time |
+| action | enum | new_position \| increase \| reduce \| exit \| large_trade \| cluster |
+| side | enum | YES \| NO |
+| walletEntryPrice | number | Wallet's entry price |
+| currentPrice | number | Price at detection |
+| copyEdgeRemaining | boolean | Whether copy edge appears gone (e.g. entered 42c, ask now 55c) |
+| notes | string | e.g. "wallet strong in geopolitics, weak in sports"; "wallet exiting, do not chase" |
+
+## GraphSignal
+
+Related-market / cross-platform consistency signal. Signal-only, future phase.
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketIds | string[] | Markets in the relationship |
+| createdAt | datetime | Detection time |
+| relationshipType | string | related-market, cross-platform, mutually-exclusive set, etc. |
+| impliedInconsistency | number | Magnitude of the pricing inconsistency |
+| confidence | enum | low \| medium \| high |
+| evidence | json | Prices/relations supporting the signal |
+
+## Outcome
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| marketId | string | FK -> Market |
+| resolvedAt | datetime | Settlement time |
+| result | enum | YES \| NO \| void/ambiguous |
+| settlementSourceUsed | string | What actually determined resolution |
+| notes | string | Settlement surprises, disputes |
+
+## CalibrationBin
+
+Aggregated predicted-vs-actual for calibration tracking (Brier score later).
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | string | Internal id |
+| binRange | string | e.g. "0.60–0.70" predicted probability |
+| scope | json | Filter: overall, per category, per strategy, per wallet-signal |
+| predictionCount | number | Predictions in bin |
+| actualRate | number | Observed frequency of YES |
+| avgPredicted | number | Mean predicted probability in bin |
+| paperPnL | number | Aggregate paper PnL for bin scope |
+| updatedAt | datetime | Last recompute |
+
+## Relationships (summary)
+
+- Platform 1—N Market 1—N MarketSnapshot.
+- Market 1—N WatchlistItem, ProbabilityEstimate, AIBrief, StrategySignal, RiskCheck,
+  PaperTrade; Market 1—1 Outcome.
+- StrategySignal —> RiskCheck —> (verdict PAPER_TRADE) —> PaperTrade —> Outcome —>
+  CalibrationBin updates.
+- Wallet 1—N WalletSnapshot, WalletSignal; WalletSignal references Market and feeds
+  the same RiskCheck path as any other signal.
+- GraphSignal references multiple Markets and also feeds RiskCheck.
+- CalibrationBin aggregates ProbabilityEstimate + Outcome pairs (and PaperTrade PnL)
+  per scope.
+
+Physical schema, storage choice, and indexing are deliberately deferred to a later
+phase. Do not create schema files from this document without explicit approval.
