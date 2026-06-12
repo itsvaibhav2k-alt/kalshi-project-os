@@ -11,6 +11,27 @@ Constraints:
   types.
 - All entities are platform-agnostic; platform-specific fields live in `raw` payloads.
 
+## Phase 2 implemented in-memory types (2026-06-11)
+
+Phase 2 implemented several of these entities as TypeScript types, in memory only.
+Physical persistence (database, tables, indexes) is still deferred to a later phase;
+every Phase 2 value is derived per refresh and discarded — nothing is stored.
+
+| Entity (spec) | Implemented type | Location |
+|---|---|---|
+| Contract understanding (part of the AIBrief concept) | `ContractUnderstanding` | `lib/understanding/types.ts` |
+| AIBrief (evidence portion) | `ResearchBrief` (+ `ResearchSource`, `ResearchStatus`) | `lib/research/types.ts` |
+| ProbabilityEstimate | `ProbabilityEstimate` | `lib/probability/types.ts` |
+| RiskCheck | `RiskCheckResult` (per check) + `RiskEvaluation` (per evaluation) | `lib/risk/types.ts` |
+| Decision dossier (composition, new in Phase 2) | `MarketDossier` (+ `EvaluationSummary`) | `lib/dossier/types.ts` |
+
+Implementation notes: the in-memory types are deterministic-pipeline shapes, not
+storage rows — timestamps are caller-supplied, fair-probability fields stay null
+without sourced research, and `RiskEvaluation.verdict` can only express
+`SKIP | WATCH | PAPER_TRADE` (the locked `REAL_TRADE_ELIGIBLE_LATER` is not
+representable at runtime). `PaperTrade`, `Outcome`, `CalibrationBin`, wallet
+entities, and all signal entities remain documentation-only.
+
 ## Platform
 
 | Field | Type | Purpose |

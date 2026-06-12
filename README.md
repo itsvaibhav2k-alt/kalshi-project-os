@@ -14,6 +14,31 @@ no risk verdicts, no AI recommendations yet — those are later phases per
 [docs/ROADMAP.md](./docs/ROADMAP.md). Real trading remains locked; the UI shows a
 static "REAL TRADING — DISABLED" status panel only.
 
+**Phase 2 complete (2026-06-11): decision dossier + deterministic risk verdicts.**
+Phase 2 bundles pipeline stages 02 Understand, 03 Research/Predict, and 04
+Validate/Risk into one milestone. The detail panel is now a read-only decision
+dossier per market:
+
+- **Contract understanding** — deterministic parse of the listed rules: resolution
+  clarity, settlement source status, important dates, ambiguity flags. Nothing is
+  guessed; missing fields are reported as missing.
+- **Research status** — Phase 2 ships NO live research engine. Every brief is
+  `not_run` with zero sources and low confidence. The UI says it plainly:
+  "Research not run yet. No source = low confidence = SKIP." No citations are
+  ever fabricated.
+- **Advisory probability** — market-implied probability from the bid/ask midpoint
+  (or last price, labeled as weaker). Fair probability stays null without sourced
+  research; an edge is never invented from price data alone.
+- **Deterministic risk verdict** — `SKIP` / `WATCH` / `PAPER_TRADE` from the
+  LLM-free rules engine in `lib/risk`, with every check and reason shown.
+
+Verdict semantics: the default is **SKIP** — a candidate must affirmatively pass
+strict checks to earn anything else. **PAPER_TRADE means eligibility only**; there
+is no paper journal yet, so no paper trade is recorded in any phase shipped so far.
+On live data the verdict is essentially always SKIP (settlement sources unverified,
+research not run, no written thesis) — a high SKIP rate is expected and healthy,
+not a bug. A serious system mostly says no.
+
 ## Local Setup
 
 ```bash

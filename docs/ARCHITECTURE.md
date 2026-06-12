@@ -1,6 +1,6 @@
 # ARCHITECTURE.md
 
-Status: Phase 0 planning document, updated with the Phase 1 as-built record.
+Status: Phase 0 planning document, updated with the Phase 1 and Phase 2 as-built records.
 Date: 2026-06-11
 
 Core principle: **LLM recommends. Rules permit. Human approves. Execution obeys.**
@@ -30,7 +30,43 @@ Not built yet (future phases per the plan below): `lib/risk/`, `lib/paper/`,
 `lib/research/`, `lib/strategies/`, `lib/wallet-intelligence/`, `lib/backtesting/`,
 `lib/simulation/`, `lib/relationship-graph/`, `lib/telemetry/`, `lib/calibration/`,
 `lib/db/`, `scripts/`. Phase 1 renders no verdicts; the UI shows factual flags plus
-"not evaluated".
+"not evaluated". (Superseded in part by the Phase 2 record below: `lib/risk/` and
+`lib/research/` now exist as described there.)
+
+## Phase 2 as built (2026-06-11)
+
+Phase 2 bundles pipeline stages 02 Understand, 03 Research/Predict, and 04
+Validate/Risk into one milestone. The Phase 1 detail panel evolved into a read-only
+decision dossier; a deterministic risk engine renders SKIP / WATCH / PAPER_TRADE.
+New module boundaries (all pure: no network, no LLM, no clock — timestamps are
+always injected by the caller):
+
+| Path | Responsibility | Boundary |
+|---|---|---|
+| `lib/understanding/` | Deterministic contract parsing: resolution clarity, settlement source status, important dates, ambiguity flags, missing fields | Parsing only; derived purely from the normalized market payload, nothing guessed |
+| `lib/research/` | Research brief scaffolding with safe states `not_run` / `sourced` / `fixture` / `unavailable`; Phase 2 live builds only `not_run` briefs | Evidence only; advisory; no source = low confidence, citations never fabricated |
+| `lib/probability/` | Probability estimate math: implied probability from bid/ask midpoint (or last price, labeled weaker); fair range null without sourced research | Math only; advisory; never invents an edge from price data alone |
+| `lib/risk/` | Deterministic verdicts via `evaluateTradeCandidate` over `RISK_CONSTANTS` | Sole verdict authority; LLM-free; pure (no fetch/http, no `process.env`, no `Date.now()`/`new Date()`); enforced by a static source-scan test |
+| `lib/dossier/` | Composition glue: `buildMarketDossier` bundles the four stage outputs; `summarizeEvaluations` tallies pipeline counts | Glue only; adds no judgment, never alters a verdict, never invents data |
+
+Integration is entirely client-side: `app/page.tsx` derives the dossier and the
+pipeline counts from the already-fetched normalized market list with one timestamp
+per refresh. **No new API routes were added in Phase 2** — `app/api/markets` remains
+the only route. Nothing is persisted; every dossier carries `source: 'derived'`.
+
+Verdict algorithm (exact, implemented in `lib/risk/evaluateTradeCandidate.ts`):
+
+1. Any hard-fail check except `written_thesis` ⇒ SKIP.
+2. No hard fails, but the thesis is missing ⇒ WATCH (a missing thesis never turns
+   an otherwise clean candidate into SKIP).
+3. No hard fails, but any warning check (e.g. thin liquidity) ⇒ WATCH.
+4. No hard fails, no warnings, thesis present ⇒ PAPER_TRADE (eligibility only —
+   no paper journal exists yet).
+
+Still not built (future phases): `lib/paper/`, `lib/strategies/`,
+`lib/wallet-intelligence/`, `lib/backtesting/`, `lib/simulation/`,
+`lib/relationship-graph/`, `lib/telemetry/`, `lib/calibration/`, `lib/db/`,
+`scripts/`. No journal, no PnL, no settlement, no calibration, no execution.
 
 ## Planned directory layout (future phases)
 

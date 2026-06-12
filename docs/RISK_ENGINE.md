@@ -1,6 +1,6 @@
 # Risk Engine
 
-Status: Phase 0 specification. No implementation exists yet. Future code must conform to this doc.
+Status: Phase 0 specification, plus the Phase 2 implementation-status record below.
 Last updated: 2026-06-11
 
 The risk engine is the spine of Kalshi Project OS. It is deterministic: hard-coded rules decide
@@ -9,6 +9,75 @@ path. LLMs and signals may produce inputs (probability estimates, confidence, ev
 deterministic rules produce verdicts.
 
 Core principle: LLM recommends. Rules permit. Human approves. Execution obeys.
+
+## Implementation status (Phase 2, 2026-06-11)
+
+An initial implementation exists in `lib/risk/` (`types.ts`, `constants.ts`,
+`evaluateTradeCandidate.ts`), exhaustively unit-tested in `tests/risk.test.ts`,
+including a static source scan asserting the module contains no network, LLM,
+environment, or clock code. The engine is a pure function: `evaluatedAt` is always
+supplied by the caller; the same candidate always yields the same evaluation.
+
+The spec sections below remain the long-term target. Phase 2 implements the subset
+that has inputs today: stake/exposure limits and cooldown/daily-loss checks (spec
+checks 10–11) require a paper journal that does not exist yet, and fees/slippage
+are not modeled. The implemented edge check compares the gross expected edge
+against the minimum and against the spread.
+
+### Actual constants (`lib/risk/constants.ts`, `RISK_CONSTANTS`)
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `paperOnlyMode` | `true` | Hard-coded; real-money paths are closed in Training Wheels mode |
+| `maxSpreadCents` | `10` | Maximum acceptable bid/ask spread, in binary-contract cents |
+| `minVolume` | `1000` | Minimum lifetime volume before liquidity stops warning |
+| `minOpenInterest` | `100` | Minimum open interest before liquidity stops warning |
+| `minEdgeCents` | `5` | Minimum expected edge, in binary-contract cents (= probability points) |
+| `minConfidenceForPaperTrade` | `'medium'` | Minimum advisory confidence for paper-trade eligibility |
+
+Units: `expectedEdge` arrives as a fraction in [0, 1]; the engine compares
+`expectedEdge * 100` against `minEdgeCents` (1 cent = 1 probability point). These
+values are conservative starters taken verbatim from the approved Phase 2 brief.
+They may be changed only by an explicit human decision recorded in
+`docs/DECISION_LOG.md` — never tuned by an agent or model, at runtime or in code.
+
+### The twelve implemented checks (in order)
+
+| # | Check id | Outcome |
+|---|---|---|
+| 1 | `paper_only_mode` | Informational pass: Training Wheels mode is active |
+| 2 | `resolution_clarity` | Clarity ≠ `clear` ⇒ fail |
+| 3 | `settlement_source` | Source missing OR unverified ⇒ fail (Phase 2 cannot verify sources, so live Kalshi markets always fail here — by design) |
+| 4 | `max_spread` | Spread null or > 10 cents ⇒ fail |
+| 5 | `volume` | Volume null or zero ⇒ fail |
+| 6 | `liquidity` | Volume < 1000 or open interest < 100 ⇒ warn (caps verdict at WATCH) |
+| 7 | `research_sources` | No cited sources ⇒ fail (no source = low confidence = SKIP) |
+| 8 | `confidence` | Confidence below `medium` ⇒ fail |
+| 9 | `fair_probability` | Fair probability null ⇒ fail (never invented from price) |
+| 10 | `min_edge` | Edge null, below 5 cents, or not exceeding the spread ⇒ fail |
+| 11 | `written_thesis` | Missing thesis ⇒ fail, but handled specially by the verdict algorithm below |
+| 12 | `real_trading_locked` | Informational pass: real trading stays locked |
+
+### Exact verdict algorithm (implemented)
+
+1. Any hard-fail check except `written_thesis` ⇒ **SKIP**.
+2. No hard fails, but the thesis is missing ⇒ **WATCH** (a missing thesis never
+   turns an otherwise clean candidate into SKIP).
+3. No hard fails, but any warning check (e.g. thin liquidity) ⇒ **WATCH**.
+4. No hard fails, no warnings, thesis present ⇒ **PAPER_TRADE** (eligibility only;
+   no paper journal exists yet, so nothing is ever entered).
+
+`REAL_TRADE_ELIGIBLE_LATER` is deliberately NOT representable in the runtime
+verdict type: `RiskVerdict` in `lib/risk/types.ts` is exactly
+`'SKIP' | 'WATCH' | 'PAPER_TRADE'`, and every `RiskEvaluation` carries the literal
+fields `mode: 'training_wheels'` and `realTradingLocked: true`. Unlocking real
+trading requires a future human-approved phase and a `DECISION_LOG.md` entry, not
+a type change in passing.
+
+On live Phase 2 data the verdict is essentially always SKIP (unverified settlement
+source + research not run + no fair probability), and the live app passes
+`hasWrittenThesis: false`, so PAPER_TRADE is unreachable live; WATCH and
+PAPER_TRADE paths are proven by synthetic test candidates.
 
 ## Verdicts
 
