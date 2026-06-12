@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 
+import type { EvaluationSummary } from '@/lib/dossier/types';
 import { formatCount } from '@/lib/utils/format';
 
 export interface PipelineRowProps {
@@ -9,22 +10,21 @@ export interface PipelineRowProps {
     junkFiltered: number;
     shown: number;
   };
+  /** Aggregate Phase 2 evaluation counts across the scanned markets. */
+  summary: EvaluationSummary;
 }
 
-/** Stages beyond 01 Scan that are not built in Phase 1. */
-const FUTURE_STAGES: readonly string[] = [
-  '02 Understand',
-  '03 Research / Predict',
-  '04 Validate / Risk',
-  '05 Paper / Simulate',
-  '06 Settle / Learn',
-];
+/** Stages beyond 04 that are not built yet. */
+const FUTURE_STAGES: readonly string[] = ['05 Paper / Simulate', '06 Settle / Learn'];
 
 /**
- * The V1 pipeline row. Only stage 01 Scan is real in Phase 1; the rest are
- * labeled future phases, and Execute stays cross-hatched and locked.
+ * The V1 pipeline row. Stages 01-04 carry real counts in Phase 2: scan,
+ * deterministic understanding, research (not run — implied probability is
+ * price math, never a research prediction), and risk evaluation with the
+ * verdict breakdown. Stages 05-06 stay future phases, and Execute stays
+ * cross-hatched and locked.
  */
-export function PipelineRow({ counts }: PipelineRowProps): ReactElement {
+export function PipelineRow({ counts, summary }: PipelineRowProps): ReactElement {
   return (
     <section className="pipeline" aria-label="V1 pipeline">
       <div className="stage">
@@ -33,6 +33,24 @@ export function PipelineRow({ counts }: PipelineRowProps): ReactElement {
         <span className="sub">
           scanned · {formatCount(counts.junkFiltered)} junk filtered ·{' '}
           {formatCount(counts.shown)} shown
+        </span>
+      </div>
+      <div className="stage">
+        <span className="label">02 Understand</span>
+        <span className="count">{formatCount(summary.understood)}</span>{' '}
+        <span className="sub">understood · deterministic</span>
+      </div>
+      <div className="stage">
+        <span className="label">03 Research / Predict</span>
+        <span className="count">{formatCount(summary.researchSourced)}</span>{' '}
+        <span className="sub">sourced · research not run</span>
+      </div>
+      <div className="stage">
+        <span className="label">04 Validate / Risk</span>
+        <span className="count">{formatCount(summary.evaluated)}</span>{' '}
+        <span className="sub">
+          evaluated · skip {formatCount(summary.skip)} · watch {formatCount(summary.watch)} ·
+          paper {formatCount(summary.paperTrade)}
         </span>
       </div>
       {FUTURE_STAGES.map((stage) => (

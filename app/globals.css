@@ -1,7 +1,8 @@
 /*
  * Kalshi Project OS — global design system.
  * Ported from docs/mockups/training-wheels-dashboard.html (paper/ink palette).
- * Phase 1 scope: no verdict chips, no buttons, factual data display only.
+ * Phase 2 scope: muted verdict chips and dossier sections added; still
+ * factual data display only — no trade actions anywhere.
  */
 
 /* ---------- tokens ---------- */
@@ -17,6 +18,12 @@
   --locked: #7a3b3b;      /* dried-ink red, reserved for locks + data warnings */
   --locked-bg: #f0e3e0;
   --pass: #4a7050;        /* sage, low saturation */
+  --skip: #5d6678;        /* calm slate — SKIP is healthy, never alarming */
+  --skip-bg: #e9e9e6;
+  --watch: #2f6f6a;       /* muted teal */
+  --watch-bg: #e2edeb;
+  --paper-trade: #8a6520; /* restrained ochre — eligibility, never a reward */
+  --paper-trade-bg: #f2e9d4;
   --serif: "Charter", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --mono: "SF Mono", "Menlo", "Consolas", "Liberation Mono", monospace;
 }
@@ -56,6 +63,15 @@ body {
 }
 .chip.locked  { color: var(--locked); background: var(--locked-bg); border: 1px solid #ddc4bf; }
 .chip.neutral { color: var(--ink-soft); background: var(--paper-deep); border: 1px solid var(--hairline); }
+.chip.skip        { color: var(--skip); background: var(--skip-bg); border: 1px solid #d4d4cf; }
+.chip.watch       { color: var(--watch); background: var(--watch-bg); border: 1px solid #c8dbd8; }
+.chip.paper-trade { color: var(--paper-trade); background: var(--paper-trade-bg); border: 1px solid #e3d4ad; }
+.chip.verdict-badge {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 5px 14px 4px;
+}
 
 .panel {
   background: var(--panel);
@@ -377,6 +393,62 @@ button.fchip { cursor: pointer; appearance: none; }
   );
 }
 .trading-status-panel .line-primary { color: var(--locked); font-weight: 600; }
+
+/* ---------- dossier sections (Phase 2) ---------- */
+.dossier-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline-soft);
+}
+.dossier-section > .label { display: block; margin-bottom: 6px; }
+.dossier-summary { font-size: 13.5px; color: var(--ink-soft); margin: 6px 0 8px; }
+.dossier-list {
+  margin: 4px 0 10px 18px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.dossier-list li { margin-bottom: 3px; }
+.dossier-note {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  margin-top: 8px;
+}
+.dossier-warning {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--locked);
+  margin-top: 8px;
+}
+
+/* ---------- risk verdict (Phase 2) ---------- */
+.verdict-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin: 8px 0 10px;
+}
+.verdict-row .verdict-why { font-size: 13px; color: var(--ink-soft); font-style: italic; }
+.check-list { list-style: none; margin-top: 8px; }
+.check-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 0 3px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.check-row:last-child { border-bottom: none; }
+.check-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  min-width: 138px;
+}
+.check-reason { flex: 1; font-size: 12.5px; color: var(--ink-soft); }
+.check-mark { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.check-mark.pass { color: var(--pass); }
+.check-mark.fail { color: var(--locked); font-weight: 700; }
+.check-mark.warn { color: var(--paper-trade); }
+.check-mark.na   { color: var(--ink-faint); }
 
 /* ---------- footer ---------- */
 footer {

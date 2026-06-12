@@ -1,11 +1,14 @@
 'use client';
 
 /**
- * Phase 1 dashboard: read-only Kalshi market scanner.
+ * Phase 2 dashboard: read-only Kalshi market scanner with decision dossiers.
  *
  * Fetches /api/markets on mount (plus a manual data-refresh control),
- * applies client-side search/category/status filters, and composes the
- * masthead, status strip, pipeline row, scanner table, and detail panel.
+ * applies client-side search/category/status filters, derives the Phase 2
+ * dossier (understanding, research not run, probability, deterministic risk
+ * verdict) for the selected market, and composes the masthead, status strip,
+ * pipeline row, scanner table, and dossier detail panel. One evaluation
+ * timestamp per refresh (the fetch timestamp) keeps the derivations pure.
  * No trading controls exist anywhere on this page.
  */
 
@@ -19,6 +22,7 @@ import { StatusStrip } from '@/components/layout/StatusStrip';
 import { DetailPanel } from '@/components/market-detail/DetailPanel';
 import { FilterBar } from '@/components/scanner/FilterBar';
 import { ScannerTable } from '@/components/scanner/ScannerTable';
+import { buildMarketDossier, summarizeEvaluations } from '@/lib/dossier/buildMarketDossier';
 import { filterByCategory, filterByStatus, searchMarkets } from '@/lib/markets/filters';
 import type { MarketsResult, MarketStatus } from '@/lib/markets/types';
 import { formatFreshness } from '@/lib/utils/format';
@@ -94,6 +98,26 @@ export default function HomePage(): ReactElement {
     [allMarkets, selectedId],
   );
 
+  // One evaluation timestamp per refresh: reuse the fetch timestamp so every
+  // derived dossier in a refresh shares it and the pure engines stay clockless.
+  const nowIso = result?.fetchedAt ?? null;
+
+  const evaluationSummary = useMemo(
+    () =>
+      nowIso === null
+        ? { understood: 0, researchSourced: 0, evaluated: 0, skip: 0, watch: 0, paperTrade: 0 }
+        : summarizeEvaluations(allMarkets, nowIso),
+    [allMarkets, nowIso],
+  );
+
+  const selectedDossier = useMemo(
+    () =>
+      selectedMarket === null || nowIso === null
+        ? null
+        : buildMarketDossier(selectedMarket, nowIso),
+    [selectedMarket, nowIso],
+  );
+
   const freshnessText = result === null ? null : formatFreshness(result.fetchedAt, nowMs);
   const stripSource: 'live' | 'fixture' | 'error' =
     fetchError !== null ? 'error' : result?.source ?? 'error';
@@ -116,7 +140,7 @@ export default function HomePage(): ReactElement {
           freshnessText={freshnessText}
         />
       )}
-      <PipelineRow counts={counts} />
+      <PipelineRow counts={counts} summary={evaluationSummary} />
 
       <div className="grid-top">
         <section className="panel" aria-label="Market scanner">
@@ -175,7 +199,7 @@ export default function HomePage(): ReactElement {
               <h2>Market Detail</h2>
               <span className="note">selected from scanner · read-only</span>
             </div>
-            <DetailPanel market={selectedMarket} freshnessText={freshnessText} />
+            <DetailPanel dossier={selectedDossier} freshnessText={freshnessText} />
           </section>
         </div>
       </div>
