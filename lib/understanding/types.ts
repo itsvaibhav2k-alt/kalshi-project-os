@@ -12,8 +12,9 @@ export type ResolutionClarity = 'clear' | 'ambiguous' | 'missing';
 /**
  * Status of the settlement source.
  *
- * 'provided' is reserved for a future phase where a source can actually be
- * verified; Phase 2 only ever emits 'unverified' (text present) or 'missing'.
+ * Deterministic understanding only ever emits 'unverified' (text present) or
+ * 'missing'. 'provided' is set solely by the Phase 4 dossier overlay when a
+ * human_verified local settlement record exists (lib/dossier/applySettlementVerification.ts).
  */
 export type SettlementSourceStatus = 'provided' | 'missing' | 'unverified';
 

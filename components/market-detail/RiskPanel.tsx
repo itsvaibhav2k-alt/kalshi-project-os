@@ -19,7 +19,7 @@ const VERDICT_CLASSES: Record<RiskVerdict, string> = {
 
 const DETERMINISTIC_COPY = 'Rules permit; the LLM does not approve. Deterministic checks only.';
 const ELIGIBILITY_COPY =
-  'PAPER_TRADE is eligibility only — the paper journal arrives in a later phase.';
+  'PAPER_TRADE is eligibility only — it permits a paper journal entry below, never a real trade.';
 
 /**
  * Stage 04 Validate / Risk section of the dossier. Renders the deterministic

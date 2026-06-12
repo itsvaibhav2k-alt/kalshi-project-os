@@ -14,15 +14,16 @@ export interface PipelineRowProps {
   summary: EvaluationSummary;
 }
 
-/** Stages beyond 04 that are not built yet. */
-const FUTURE_STAGES: readonly string[] = ['05 Paper / Simulate', '06 Settle / Learn'];
+/** Stages beyond 05 that are not built yet. */
+const FUTURE_STAGES: readonly string[] = ['06 Settle / Learn'];
 
 /**
  * The V1 pipeline row. Stages 01-04 carry real counts: scan, deterministic
  * understanding, manual research backed by accepted persisted sources
  * (implied probability is price math and never counts as research), and risk
- * evaluation with the verdict breakdown. Stages 05-06 stay future phases,
- * and Execute stays cross-hatched and locked.
+ * evaluation with the verdict breakdown. Stage 05 covers the Phase 4 paper
+ * decision journal (simulation stays a later phase), stage 06 stays a future
+ * phase, and Execute stays cross-hatched and locked.
  */
 export function PipelineRow({ counts, summary }: PipelineRowProps): ReactElement {
   return (
@@ -52,6 +53,11 @@ export function PipelineRow({ counts, summary }: PipelineRowProps): ReactElement
           evaluated · skip {formatCount(summary.skip)} · watch {formatCount(summary.watch)} ·
           paper {formatCount(summary.paperTrade)}
         </span>
+      </div>
+      <div className="stage">
+        <span className="label">05 Paper / Simulate</span>
+        <span className="count">—</span>{' '}
+        <span className="sub">paper decision journal live · simulation in a later phase</span>
       </div>
       {FUTURE_STAGES.map((stage) => (
         <div className="stage" key={stage}>
