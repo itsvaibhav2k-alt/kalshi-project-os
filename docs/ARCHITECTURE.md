@@ -68,6 +68,20 @@ Still not built (future phases): `lib/paper/`, `lib/strategies/`,
 `lib/relationship-graph/`, `lib/telemetry/`, `lib/calibration/`, `lib/db/`,
 `scripts/`. No journal, no PnL, no settlement, no calibration, no execution.
 
+## Phase 3 module boundaries (2026-06-11, approved)
+
+Phase 3 adds local persistence for the research-to-thesis loop. It defines one new
+module and one new API route group. Nothing else gains persistence, and the risk
+engine is unchanged.
+
+| Path | Responsibility | Boundary |
+|---|---|---|
+| `lib/research-store/` | SQLite-backed local persistence (via `better-sqlite3`) for research sources, manual research briefs, human-entered fair-probability estimates, and written theses. Database file lives under the gitignored `.kalshi-os/` directory. | Server-side only — never imported by client components. The ONLY module allowed to touch the database or read the `KALSHI_DATA_DIR` env override (read solely inside `lib/research-store/db.ts`). Store functions take an explicit db handle and an injected `nowIso`; no clock calls inside the module. `lib/risk/` NEVER imports it; persisted research reaches the risk engine only as plain data mapped through `lib/dossier`. No trading, order, account, auth, wallet, or key data — research and thesis records only. |
+| `app/api/research/**` | Research-only mutation routes: CRUD for sources, briefs, probability estimates, and theses (GET/POST/PATCH only; no PUT, no DELETE — archived records remain as an audit trail). | The ONLY route group permitted to expose mutations in V1. Trading, order, account, auth, and wallet mutations remain forbidden everywhere. `app/api/markets` stays GET-only. Enforced by route-aware safety tests. |
+
+`lib/research-store/` supersedes the planned generic `lib/db/` entry below for the
+research/thesis domain; a broader persistence layer remains a future-phase decision.
+
 ## Planned directory layout (future phases)
 
 The table below is the Phase 0 plan for later phases. Directories not listed in the

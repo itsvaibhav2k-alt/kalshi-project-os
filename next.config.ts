@@ -1,5 +1,8 @@
 import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  // better-sqlite3 is a native Node addon; keep it external to the server bundle.
+  serverExternalPackages: ['better-sqlite3'],
+};
 
 export default nextConfig;
