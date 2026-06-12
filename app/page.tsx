@@ -6,9 +6,10 @@
  * Fetches /api/markets plus the bulk /api/research summary map on each
  * refresh, and the full /api/research/[ticker] state plus the paper journal
  * entries when a market is selected and after every mutation. Market data
- * stays read-only; research, thesis, settlement-verification, and paper-only
- * decision-journal records are the ONLY mutations in V1, and they are
- * advisory inputs — the deterministic risk engine alone issues verdicts.
+ * stays read-only; research, thesis, settlement-verification, paper-only
+ * decision-journal, and advisory AI-draft records are the ONLY mutations in
+ * V1, and they are advisory inputs — the deterministic risk engine alone
+ * issues verdicts. AI drafts sit entirely outside the risk path.
  * One evaluation timestamp per refresh (the fetch timestamp) keeps the
  * derivations pure. No trading controls exist anywhere on this page.
  */
@@ -22,6 +23,7 @@ import { SafetyFooter } from '@/components/layout/SafetyFooter';
 import { StatusStrip } from '@/components/layout/StatusStrip';
 import { DetailPanel } from '@/components/market-detail/DetailPanel';
 import type {
+  AiDraftActions,
   PaperJournalActions,
   ResearchActions,
 } from '@/components/market-detail/researchActions';
@@ -36,6 +38,7 @@ import { filterByCategory, filterByStatus, searchMarkets } from '@/lib/markets/f
 import type { MarketsResult, MarketStatus } from '@/lib/markets/types';
 import { toPersistedResearchSnapshot } from '@/lib/research-store/snapshot';
 import type {
+  AiResearchDraftRecord,
   PaperDecisionEntryRecord,
   ResearchStateResponse,
   ResearchSummary,
@@ -137,6 +140,8 @@ export default function HomePage(): ReactElement {
   const [researchError, setResearchError] = useState<string | null>(null);
   const [paperEntries, setPaperEntries] = useState<PaperDecisionEntryRecord[] | null>(null);
   const [paperJournalError, setPaperJournalError] = useState<string | null>(null);
+  const [aiDrafts, setAiDrafts] = useState<AiResearchDraftRecord[] | null>(null);
+  const [aiDraftsError, setAiDraftsError] = useState<string | null>(null);
 
   const loadResearchSummaries = useCallback(async (): Promise<void> => {
     try {
@@ -251,16 +256,44 @@ export default function HomePage(): ReactElement {
     }
   }, []);
 
+  // Advisory AI drafts for the selected market. Drafts live entirely outside
+  // the risk path; this loader only feeds the copilot panel's display.
+  const loadAiDrafts = useCallback(async (ticker: string): Promise<void> => {
+    try {
+      const response = await fetch(`/api/research/${encodeURIComponent(ticker)}/ai-drafts`);
+      if (!response.ok) {
+        throw new Error(await readResearchError(response));
+      }
+      const data = (await response.json()) as { aiDrafts: AiResearchDraftRecord[] };
+      if (selectedTickerRef.current !== ticker) {
+        return;
+      }
+      setAiDrafts(data.aiDrafts);
+      setAiDraftsError(null);
+    } catch (error: unknown) {
+      if (selectedTickerRef.current !== ticker) {
+        return;
+      }
+      setAiDrafts(null);
+      setAiDraftsError(
+        error instanceof Error ? error.message : 'Unexpected failure loading AI drafts',
+      );
+    }
+  }, []);
+
   useEffect(() => {
     setSelectedResearch(null);
     setResearchError(null);
     setPaperEntries(null);
     setPaperJournalError(null);
+    setAiDrafts(null);
+    setAiDraftsError(null);
     if (selectedTicker !== null) {
       void loadSelectedResearch(selectedTicker);
       void loadPaperEntries(selectedTicker);
+      void loadAiDrafts(selectedTicker);
     }
-  }, [selectedTicker, loadSelectedResearch, loadPaperEntries]);
+  }, [selectedTicker, loadSelectedResearch, loadPaperEntries, loadAiDrafts]);
 
   const mutateResearch = useCallback(
     async (
@@ -406,6 +439,46 @@ export default function HomePage(): ReactElement {
     [mutatePaperJournal],
   );
 
+  // Advisory AI-draft mutations reuse the research mutation helper (same
+  // /api/research namespace) and then refresh the drafts list, mirroring how
+  // paper actions refresh the journal. Drafts never alter research state or
+  // the deterministic verdict.
+  const aiDraftActions = useMemo<AiDraftActions>(
+    () => ({
+      generateDraft: async (draftType, userFocus) => {
+        const ticker = selectedTickerRef.current;
+        if (ticker === null) {
+          return 'no market is selected';
+        }
+        const outcome = await mutateResearch(ticker, '/ai-drafts', 'POST', {
+          draftType,
+          userFocus,
+        });
+        if (outcome === null) {
+          await loadAiDrafts(ticker);
+        }
+        return outcome;
+      },
+      archiveDraft: async (draftId) => {
+        const ticker = selectedTickerRef.current;
+        if (ticker === null) {
+          return 'no market is selected';
+        }
+        const outcome = await mutateResearch(
+          ticker,
+          `/ai-drafts/${encodeURIComponent(draftId)}`,
+          'PATCH',
+          { status: 'archived' },
+        );
+        if (outcome === null) {
+          await loadAiDrafts(ticker);
+        }
+        return outcome;
+      },
+    }),
+    [mutateResearch, loadAiDrafts],
+  );
+
   // One evaluation timestamp per refresh: reuse the fetch timestamp so every
   // derived dossier in a refresh shares it and the pure engines stay clockless.
   const nowIso = result?.fetchedAt ?? null;
@@ -542,6 +615,9 @@ export default function HomePage(): ReactElement {
               paperEntries={paperEntries}
               paperJournalError={paperJournalError}
               paperActions={paperJournalActions}
+              aiDrafts={aiDrafts}
+              aiDraftsError={aiDraftsError}
+              aiDraftActions={aiDraftActions}
             />
           </section>
         </div>

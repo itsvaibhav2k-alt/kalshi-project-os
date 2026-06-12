@@ -201,6 +201,48 @@ permitted mutation namespace in V1):**
   token. Unit tests pin both the allowed and forbidden word lists so the
   carve-out cannot silently widen.
 
+## (i) Phase 5 addition: AI Research Copilot — drafts are advisory only (human-approved)
+
+Phase 5 added the first AI layer under the human-approved Phase 5 plan,
+recorded in `docs/DECISION_LOG.md`. It is a draft-only analyst layer that sits
+entirely outside the risk path.
+
+**AI drafts are advisory artifacts, nothing more:**
+
+- A draft (research questions, source checklist, brief draft, thesis critique,
+  missing-info analysis, skeptical countercase) never satisfies any risk
+  check, never promotes any record (source, brief, thesis, settlement), and
+  never creates a paper entry. The draft ledger has no verdict, stake, or PnL
+  columns, and drafts are invisible to research summaries and dossier
+  snapshots. `lib/risk` is byte-unchanged; the deterministic engine remains
+  the sole verdict authority, and human-reviewed research remains the only
+  research that counts toward it.
+
+**No provider keys exist or are required:**
+
+- Phase 5 ships only a deterministic local fallback provider
+  (`local_deterministic / phase5_fallback`). No LLM API keys, no network calls
+  to AI providers, no AI-related environment variables — nothing secret-shaped
+  anywhere. Fallback output synthesizes only what the dossier and persisted
+  research state actually contain; every missing input is labeled missing,
+  never invented. Future real providers must slot in behind the same
+  interface without changing any of the above.
+
+**Routes confined to the existing research namespace:**
+
+- The only AI-draft routes are `GET`/`POST`
+  `/api/research/[ticker]/ai-drafts` and an archive-only `PATCH`
+  `/api/research/[ticker]/ai-drafts/[draftId]` (body exactly
+  `{status: 'archived'}`). No new mutation namespace was added, no deletes
+  exist, and archived drafts persist as an audit trail.
+
+**Safety scan strengthened, never weakened:**
+
+- The forbidden-token content scan now also covers `lib/ai-research/**` (in
+  addition to `app/api/**` and `lib/research-store/**`), so AI prompt and
+  template text obeys the same token ban as route and store code. The
+  carve-out word lists are unchanged.
+
 ---
 
 Any change to this file requires explicit human approval and a `DECISION_LOG.md` entry.

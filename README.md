@@ -100,6 +100,30 @@ market at SKIP-by-default now have honest, human-gated mechanisms:
   joins `/api/research/**` as the only routes that write anything, enforced by
   the route-aware safety tests.
 
+**Phase 5 complete (2026-06-12, pending human approval to advance): AI Research
+Copilot — a draft-only analyst layer outside the risk path.** The first AI
+layer in the system generates advisory draft artifacts only (research
+questions, source checklists, brief drafts, thesis critiques, missing-info
+analyses, skeptical countercases):
+
+- **Draft-only and advisory:** an AI draft never satisfies a risk check, never
+  promotes a source/brief/thesis/settlement record, never creates a paper
+  entry, and carries no verdict, stake, or PnL fields. The deterministic risk
+  engine in `lib/risk` is byte-for-byte unchanged and remains the only verdict
+  authority.
+- **Deterministic local fallback, no keys:** Phase 5 ships no real LLM
+  provider. Drafts come from a deterministic local provider
+  (`local_deterministic / phase5_fallback`) that synthesizes only what the
+  dossier and persisted research actually contain — every missing input is
+  labeled missing, never invented. No API keys, no network calls, no
+  AI-related environment variables exist or are required.
+- **Outside the risk path:** drafts live in their own `ai_research_drafts`
+  ledger behind a dedicated route group
+  (`/api/research/[ticker]/ai-drafts`, GET/POST plus an archive-only PATCH).
+  They are invisible to research summaries and dossier snapshots; risk
+  verdicts and reasons are identical before and after drafting, proven by
+  dedicated isolation tests.
+
 No paper PnL, no NO-side entries, no settlement-outcome tracking, no
 calibration, and no execution code exist — all deliberately deferred. This
 project makes no claims of profitability; nothing in it is evidence of edge.
@@ -148,12 +172,13 @@ Automated tests never call the network; they run against checked-in fixtures in
   KALSHI_MARKETS_SOURCE=fixture npm run dev -- --port 3456
   ```
 
-## Local Persistence (Phases 3–4)
+## Local Persistence (Phases 3–5)
 
 - Research notes (sources, manual briefs, fair-probability estimates, theses)
   plus the Phase 4 settlement-verification records and paper decision entries
-  persist to a local SQLite file at `.kalshi-os/kalshi-os.sqlite`. The directory
-  is gitignored and never committed.
+  and the Phase 5 advisory AI draft artifacts persist to a local SQLite file at
+  `.kalshi-os/kalshi-os.sqlite`. The directory is gitignored and never
+  committed.
 - The data directory can be overridden with the `KALSHI_DATA_DIR` environment
   variable (used by tests; read only inside `lib/research-store/db.ts`).
 - The store holds research, thesis, settlement-verification, and paper

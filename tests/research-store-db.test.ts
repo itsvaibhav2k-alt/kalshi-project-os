@@ -24,6 +24,7 @@ const EXPECTED_TABLES = [
   'theses',
   'market_settlement_sources',
   'paper_decision_entries',
+  'ai_research_drafts',
 ];
 
 /** Tracks temp dirs created during a test so cleanup never touches the real .kalshi-os. */
@@ -117,6 +118,35 @@ function paperEntryRow(overrides: Record<string, unknown> = {}): Record<string, 
   };
 }
 
+const AI_DRAFT_INSERT_SQL = `
+  INSERT INTO ai_research_drafts
+    (id, market_ticker, market_id, draft_type, status, provider, model, prompt_version,
+     input_snapshot_json, output_markdown, output_json, user_focus, created_at, updated_at)
+  VALUES (@id, @market_ticker, @market_id, @draft_type, @status, @provider, @model,
+          @prompt_version, @input_snapshot_json, @output_markdown, @output_json,
+          @user_focus, @created_at, @updated_at)
+`;
+
+function aiDraftRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'aid-1',
+    market_ticker: 'TEST-TICKER',
+    market_id: 'kalshi:TEST-TICKER',
+    draft_type: 'research_questions',
+    status: 'draft',
+    provider: 'local_deterministic',
+    model: 'phase5_fallback',
+    prompt_version: 'phase5.v1',
+    input_snapshot_json: JSON.stringify({ ticker: 'TEST-TICKER' }),
+    output_markdown: '## Research questions\n\n- What does the resolution source say?',
+    output_json: null,
+    user_focus: null,
+    created_at: NOW_ISO,
+    updated_at: NOW_ISO,
+    ...overrides,
+  };
+}
+
 afterEach(() => {
   closeAllDatabases();
   vi.unstubAllEnvs();
@@ -190,7 +220,7 @@ describe('openDatabase', () => {
     db.close();
   });
 
-  it('should record ledger versions [1, 2] when initializing a fresh database', () => {
+  it('should record ledger versions [1, 2, 3] when initializing a fresh database', () => {
     // Arrange
     const dataDir = makeTempDir();
 
@@ -201,7 +231,7 @@ describe('openDatabase', () => {
       .all() as Array<{ version: number }>;
 
     // Assert
-    expect(rows.map((row) => row.version)).toEqual([1, 2]);
+    expect(rows.map((row) => row.version)).toEqual([1, 2, 3]);
     db.close();
   });
 
@@ -432,6 +462,126 @@ describe('migration v2 tables', () => {
       expect(() =>
         db.prepare(PAPER_ENTRY_INSERT_SQL).run(paperEntryRow({ status: 'open' })),
       ).toThrow(/CHECK constraint failed/);
+      db.close();
+    });
+  });
+});
+
+describe('migration v3 tables', () => {
+  describe('ai_research_drafts constraints', () => {
+    it('should accept a draft row when all enum values are valid', () => {
+      // Arrange
+      const db = openDatabase(makeTempDir(), NOW_ISO);
+
+      // Act
+      db.prepare(AI_DRAFT_INSERT_SQL).run(aiDraftRow());
+      const count = db
+        .prepare('SELECT COUNT(*) AS n FROM ai_research_drafts')
+        .get() as { n: number };
+
+      // Assert
+      expect(count.n).toBe(1);
+      db.close();
+    });
+
+    it('should accept a row for each of the six draft kinds', () => {
+      // Arrange
+      const db = openDatabase(makeTempDir(), NOW_ISO);
+      const kinds = [
+        'research_questions',
+        'source_checklist',
+        'brief_draft',
+        'thesis_critique',
+        'missing_info',
+        'skeptical_countercase',
+      ];
+
+      // Act
+      for (const [index, kind] of kinds.entries()) {
+        db.prepare(AI_DRAFT_INSERT_SQL).run(aiDraftRow({ id: `aid-${index}`, draft_type: kind }));
+      }
+      const count = db
+        .prepare('SELECT COUNT(*) AS n FROM ai_research_drafts')
+        .get() as { n: number };
+
+      // Assert
+      expect(count.n).toBe(kinds.length);
+      db.close();
+    });
+
+    it('should accept an archived row with optional output_json and user_focus set', () => {
+      // Arrange
+      const db = openDatabase(makeTempDir(), NOW_ISO);
+
+      // Act / Assert
+      expect(() =>
+        db.prepare(AI_DRAFT_INSERT_SQL).run(
+          aiDraftRow({
+            status: 'archived',
+            output_json: JSON.stringify({ sections: [] }),
+            user_focus: 'settlement ambiguity',
+          }),
+        ),
+      ).not.toThrow();
+      db.close();
+    });
+
+    it('should reject a row when draft_type is not in the enum', () => {
+      // Arrange
+      const db = openDatabase(makeTempDir(), NOW_ISO);
+
+      // Act / Assert
+      expect(() =>
+        db.prepare(AI_DRAFT_INSERT_SQL).run(aiDraftRow({ draft_type: 'trade_idea' })),
+      ).toThrow(/CHECK constraint failed/);
+      db.close();
+    });
+
+    it('should reject a row when status is not in the enum', () => {
+      // Arrange
+      const db = openDatabase(makeTempDir(), NOW_ISO);
+
+      // Act / Assert
+      expect(() =>
+        db.prepare(AI_DRAFT_INSERT_SQL).run(aiDraftRow({ status: 'approved' })),
+      ).toThrow(/CHECK constraint failed/);
+      db.close();
+    });
+
+    it('should reject a row when output_markdown is null', () => {
+      // Arrange
+      const db = openDatabase(makeTempDir(), NOW_ISO);
+
+      // Act / Assert
+      expect(() =>
+        db.prepare(AI_DRAFT_INSERT_SQL).run(aiDraftRow({ output_markdown: null })),
+      ).toThrow(/NOT NULL constraint failed/);
+      db.close();
+    });
+
+    it('should have no verdict, stake, size, pnl, approved, reviewed, or ready columns', () => {
+      // Arrange
+      const db = openDatabase(makeTempDir(), NOW_ISO);
+
+      // Act
+      const columns = db
+        .prepare("SELECT name FROM pragma_table_info('ai_research_drafts')")
+        .all() as Array<{ name: string }>;
+      const names = columns.map((column) => column.name.toLowerCase());
+
+      // Assert: the ledger is advisory-only — nothing decision- or money-shaped
+      const forbiddenFragments = [
+        'verdict',
+        'stake',
+        'size',
+        'pnl',
+        'approved',
+        'reviewed',
+        'ready',
+      ];
+      for (const fragment of forbiddenFragments) {
+        expect(names.some((name) => name.includes(fragment))).toBe(false);
+      }
       db.close();
     });
   });

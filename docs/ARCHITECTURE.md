@@ -189,6 +189,27 @@ superseded for V1 by this phase: the as-built journal records decision
 snapshots only — exits, paper PnL, and outcome tracking stay deferred to a
 future explicitly approved phase.
 
+## Phase 5 module boundaries (2026-06-12, approved)
+
+Phase 5 adds the first AI layer: a draft-only research copilot. It generates
+**advisory draft artifacts** (research questions, source checklists, brief drafts,
+thesis critiques, missing-info analyses, skeptical countercases) persisted in a new
+`ai_research_drafts` ledger that sits **entirely outside the risk path**. AI drafts
+never satisfy risk checks, never promote sources/briefs/theses/settlement records to
+accepted/human_reviewed/ready_for_risk/human_verified, never create paper entries,
+and carry no verdict/stake/PnL fields. `lib/risk` stays byte-unchanged.
+
+| Path | Responsibility | Boundary |
+|---|---|---|
+| `lib/ai-research/` | Advisory draft generation behind an `AiResearchProvider` abstraction. Phase 5 ships ONLY the deterministic fallback provider (`local_deterministic` / `phase5_fallback`): pure templating over the composed dossier and persisted research state — no LLM, no network, no env reads, no API keys. Fallback output synthesizes only what the dossier/research state actually contains; every absent input is explicitly labeled missing, never invented. | Generation only — never persistence, never routes, never verdicts. Output is advisory text/data handed back to the route layer; it never feeds `lib/risk` and never maps to a verdict, a promotion, or a paper entry. Future real providers slot in behind the interface only with explicit human approval. Included in the forbidden-token safety scan alongside `app/api/**` and `lib/research-store/**`. |
+| `lib/research-store/aiDrafts.ts` (+ schema/types/validators) | `ai_research_drafts` ledger: migration v3, create/list/get/archive for AI draft records (draft → archived only; no deletes, no unarchive). The table has no verdict, stake, size, PnL, approved, reviewed, or ready columns by design. | Same store conventions: explicit db handle, injected `nowIso`, server-side validation. Draft records are deliberately invisible to the risk path: NOT included in `ResearchSummary`, `ResearchStateResponse`, `toPersistedResearchSnapshot`, or `listResearchTickers` — the dossier/risk input is byte-identical with or without drafts. Display loads via a dedicated GET only. |
+| `app/api/research/[ticker]/ai-drafts/**` | Draft routes inside the existing research mutation namespace: `route.ts` (GET list, POST generate-and-persist via the provider with a compact derived-scalars-only input snapshot) and `[draftId]/route.ts` (PATCH, body exactly `{status:'archived'}`). | GET/POST/PATCH only; no PUT/DELETE; no new mutation namespace. POST touches ONLY `ai_research_drafts` — it never writes sources, briefs, estimates, theses, settlement records, or paper entries. Route-aware safety tests cover these routes automatically. |
+
+Dependency directions: `lib/ai-research` is consumed by the ai-drafts routes only;
+`lib/risk`, `lib/dossier`, `lib/probability`, `lib/paper`, and `lib/understanding`
+import nothing from it and are unchanged. The deterministic risk engine remains the
+sole verdict authority; drafts are research reading material for the human, full stop.
+
 ## Planned directory layout (future phases)
 
 The table below is the Phase 0 plan for later phases. Directories not listed in the

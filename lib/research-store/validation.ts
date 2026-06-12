@@ -1,4 +1,6 @@
 import {
+  AI_RESEARCH_DRAFT_STATUSES,
+  AI_RESEARCH_DRAFT_TYPES,
   BRIEF_BASES,
   BRIEF_STATES,
   CONFIDENCE_LEVELS,
@@ -471,6 +473,93 @@ export function validatePaperEntryInput(payload: unknown): ValidationResult {
   if (!isNonEmptyString(payload.riskChecklistJson)) {
     errors.push('riskChecklistJson is required and must be non-empty');
   }
+
+  return toResult(errors);
+}
+
+/** Maximum accepted length for the optional userFocus text on an AI draft request. */
+export const AI_DRAFT_USER_FOCUS_MAX_LENGTH = 500;
+
+function validateUserFocus(userFocus: unknown, errors: string[]): void {
+  if (userFocus === undefined || userFocus === null) {
+    return;
+  }
+  if (typeof userFocus !== 'string') {
+    errors.push('userFocus must be a string when present');
+  } else if (userFocus.length > AI_DRAFT_USER_FOCUS_MAX_LENGTH) {
+    errors.push(`userFocus must be at most ${AI_DRAFT_USER_FOCUS_MAX_LENGTH} characters`);
+  }
+}
+
+/**
+ * Validates a request to generate an advisory AI research draft (Phase 5).
+ *
+ * Rules: draftType must be one of the six draft kinds; userFocus is optional,
+ * but when present it must be a string of at most 500 characters. Drafts are
+ * advisory-only artifacts outside the deterministic risk path — this request
+ * never carries a verdict, stake, or promotion field.
+ *
+ * @param payload - Untrusted request body.
+ * @returns Validation result with field-level error messages.
+ */
+export function validateAiDraftRequest(payload: unknown): ValidationResult {
+  if (!isRecord(payload)) {
+    return toResult(['payload must be an object']);
+  }
+
+  const errors: string[] = [];
+
+  if (!isOneOf(payload.draftType, AI_RESEARCH_DRAFT_TYPES)) {
+    errors.push(`draftType must be one of: ${AI_RESEARCH_DRAFT_TYPES.join(', ')}`);
+  }
+  validateUserFocus(payload.userFocus, errors);
+
+  return toResult(errors);
+}
+
+/**
+ * Validates a fully composed AI draft record input before persistence
+ * (Phase 5).
+ *
+ * Rules: provider, model, promptVersion, inputSnapshotJson, and
+ * outputMarkdown are required and must be non-empty; status must be in its
+ * union ('draft' or 'archived'); outputJson must be null or a string;
+ * userFocus must be null or a string of at most 500 characters. A draft
+ * record is advisory data only — it never satisfies a risk check and never
+ * promotes any research, thesis, or settlement record.
+ *
+ * @param payload - Untrusted draft record input.
+ * @returns Validation result with field-level error messages.
+ */
+export function validateAiDraftRecordInput(payload: unknown): ValidationResult {
+  if (!isRecord(payload)) {
+    return toResult(['payload must be an object']);
+  }
+
+  const errors: string[] = [];
+
+  const requiredTextFields = [
+    'provider',
+    'model',
+    'promptVersion',
+    'inputSnapshotJson',
+    'outputMarkdown',
+  ] as const;
+  for (const field of requiredTextFields) {
+    if (!isNonEmptyString(payload[field])) {
+      errors.push(`${field} is required and must be non-empty`);
+    }
+  }
+
+  if (!isOneOf(payload.status, AI_RESEARCH_DRAFT_STATUSES)) {
+    errors.push(`status must be one of: ${AI_RESEARCH_DRAFT_STATUSES.join(', ')}`);
+  }
+
+  const outputJson = payload.outputJson;
+  if (outputJson !== undefined && outputJson !== null && typeof outputJson !== 'string') {
+    errors.push('outputJson must be null or a string');
+  }
+  validateUserFocus(payload.userFocus, errors);
 
   return toResult(errors);
 }

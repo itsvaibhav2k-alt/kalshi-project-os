@@ -11,6 +11,7 @@
  */
 
 import type {
+  AiResearchDraftType,
   Confidence,
   SettlementAuthorityType,
   SettlementVerificationStatus,
@@ -128,4 +129,21 @@ export interface PaperJournalActions {
   logPaperDecision: () => Promise<MutationOutcome>;
   /** Archives one journal entry (PATCH; the only permitted entry change). */
   archiveEntry: (entryId: string) => Promise<MutationOutcome>;
+}
+
+/**
+ * AI-draft mutation callbacks the page supplies to the copilot panel.
+ * Drafts are advisory artifacts that live entirely outside the risk path:
+ * they never satisfy a risk check, never promote sources, briefs, theses,
+ * or settlement records, and never create paper entries. Archived drafts
+ * persist as an audit trail (no deletes).
+ */
+export interface AiDraftActions {
+  /** Generates one advisory draft (POST; the server composes the inputs). */
+  generateDraft: (
+    draftType: AiResearchDraftType,
+    userFocus: string | null,
+  ) => Promise<MutationOutcome>;
+  /** Archives one draft (PATCH; the only permitted draft change). */
+  archiveDraft: (draftId: string) => Promise<MutationOutcome>;
 }

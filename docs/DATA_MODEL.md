@@ -1,7 +1,7 @@
 # DATA_MODEL.md
 
 Status: Phase 0 planning document, updated with the Phase 2 in-memory types and the
-Phase 3 / Phase 4 persisted research-store schema.
+Phase 3 / Phase 4 / Phase 5 persisted research-store schema.
 Date: 2026-06-12
 
 Constraints:
@@ -107,6 +107,37 @@ The `PaperTrade` planning entity below (stake, contracts, exit price, outcome,
 paper PnL) remains documentation-only: `paper_decision_entries` is deliberately
 narrower, and the additional fields stay deferred to a future explicitly
 approved phase.
+
+## Phase 5 schema additions (2026-06-12)
+
+Migration v3 adds one table (eight total), same database, same conventions
+(TEXT UUID ids, caller-injected ISO timestamps, no deletes, ticker index):
+
+| Table | Purpose | Key columns |
+|---|---|---|
+| `ai_research_drafts` | Advisory AI draft artifacts — a copilot ledger entirely outside the risk path | `id`, `market_ticker`, `market_id`, `draft_type` (CHECK: `research_questions\|source_checklist\|brief_draft\|thesis_critique\|missing_info\|skeptical_countercase`), `status` (CHECK: `draft\|archived`), `provider`, `model`, `prompt_version`, `input_snapshot_json` (required; compact derived scalars only — no raw market blobs, no env values), `output_markdown` (required), `output_json`, `user_focus`, timestamps |
+
+Phase 5 conventions (binding):
+
+- **Archive-only lifecycle:** the only post-creation mutation is `draft` →
+  `archived`; there is no delete and no unarchive, and archived rows persist
+  as an audit trail (same philosophy as every other table). Per-market listing
+  uses `idx_ai_research_drafts_ticker`, newest first
+  (`created_at DESC, rowid DESC`).
+- **NO verdict, stake, or PnL columns:** the table deliberately cannot
+  represent a verdict, stake, contract count, PnL, approval, review state, or
+  readiness — asserted by a PRAGMA column-audit test. A draft can never be
+  promoted into an accepted source, a reviewed brief, a ready thesis, a
+  verified settlement record, or a paper entry.
+- **Drafts never feed risk:** rows in this table are not read by
+  `lib/dossier`, the research summary, or the persisted research snapshot, so
+  the deterministic risk engine never sees them. Verdicts and reasons are
+  identical before and after draft creation (asserted by dedicated isolation
+  tests).
+- **Provenance labels:** `provider` / `model` / `prompt_version` record exactly
+  what generated each draft (Phase 5:
+  `local_deterministic` / `phase5_fallback` / `phase5.v1`) so every artifact
+  stays auditable when future providers are added behind the same interface.
 
 ## Platform
 
@@ -345,8 +376,8 @@ Aggregated predicted-vs-actual for calibration tracking (Brier score later).
 - CalibrationBin aggregates ProbabilityEstimate + Outcome pairs (and PaperTrade PnL)
   per scope.
 
-Physical schema for the entities above remains deferred except where the Phase 3
-and Phase 4 research-store sections document otherwise (sources, briefs,
-probability estimates, theses, settlement-source records, paper decision
-entries). Do not create further schema files from this document without
-explicit approval.
+Physical schema for the entities above remains deferred except where the
+Phase 3, Phase 4, and Phase 5 research-store sections document otherwise
+(sources, briefs, probability estimates, theses, settlement-source records,
+paper decision entries, AI research drafts). Do not create further schema
+files from this document without explicit approval.

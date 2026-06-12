@@ -1,6 +1,8 @@
 import type Database from 'better-sqlite3';
 
 import {
+  AI_RESEARCH_DRAFTS_DDL,
+  AI_RESEARCH_DRAFTS_TICKER_INDEX_DDL,
   MARKET_SETTLEMENT_SOURCES_DDL,
   MARKET_SETTLEMENT_SOURCES_TICKER_INDEX_DDL,
   MARKET_SOURCES_DDL,
@@ -51,6 +53,15 @@ export const MIGRATIONS: readonly Migration[] = [
       MARKET_SETTLEMENT_SOURCES_TICKER_INDEX_DDL,
       PAPER_DECISION_ENTRIES_DDL,
       PAPER_DECISION_ENTRIES_TICKER_INDEX_DDL,
+    ],
+  },
+  {
+    version: 3,
+    description:
+      'Phase 5: advisory AI research draft ledger, outside the deterministic risk path',
+    statements: [
+      AI_RESEARCH_DRAFTS_DDL,
+      AI_RESEARCH_DRAFTS_TICKER_INDEX_DDL,
     ],
   },
 ];

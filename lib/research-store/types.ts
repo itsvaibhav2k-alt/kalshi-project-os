@@ -406,3 +406,71 @@ export interface ResearchStateResponse {
   settlementSources: SettlementSourceRecord[];
   summary: ResearchSummary;
 }
+
+/**
+ * Kinds of advisory AI research drafts (Phase 5). Every draft is an
+ * advisory-only artifact that sits outside the deterministic risk path:
+ * drafts never satisfy risk checks, never promote sources, briefs, theses,
+ * or settlement records, and never create paper entries.
+ */
+export const AI_RESEARCH_DRAFT_TYPES = [
+  'research_questions',
+  'source_checklist',
+  'brief_draft',
+  'thesis_critique',
+  'missing_info',
+  'skeptical_countercase',
+] as const;
+export type AiResearchDraftType = (typeof AI_RESEARCH_DRAFT_TYPES)[number];
+
+/**
+ * Lifecycle status of an AI research draft. Archive-only: no deletes, no
+ * unarchive; archived rows remain as an audit trail.
+ */
+export const AI_RESEARCH_DRAFT_STATUSES = ['draft', 'archived'] as const;
+export type AiResearchDraftStatus = (typeof AI_RESEARCH_DRAFT_STATUSES)[number];
+
+/** Raw ai_research_drafts row exactly as stored in SQLite (snake_case columns). */
+export interface AiResearchDraftRow {
+  id: string;
+  market_ticker: string;
+  market_id: string;
+  draft_type: AiResearchDraftType;
+  status: AiResearchDraftStatus;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  input_snapshot_json: string;
+  output_markdown: string;
+  output_json: string | null;
+  user_focus: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * ai_research_drafts record in API/application shape (camelCase).
+ *
+ * Advisory-only and outside the risk path: a draft carries no verdict, stake,
+ * size, or PnL field, never satisfies a risk check, and never promotes any
+ * research, thesis, or settlement record. The deterministic risk engine alone
+ * issues verdicts; drafts are reading material for human review.
+ */
+export interface AiResearchDraftRecord {
+  id: string;
+  marketTicker: string;
+  marketId: string;
+  draftType: AiResearchDraftType;
+  status: AiResearchDraftStatus;
+  provider: string;
+  model: string;
+  promptVersion: string;
+  /** Compact JSON of derived scalar inputs only — never raw market blobs or env values. */
+  inputSnapshotJson: string;
+  /** Generated draft body; rendered as plain text, never as HTML. */
+  outputMarkdown: string;
+  outputJson: string | null;
+  userFocus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

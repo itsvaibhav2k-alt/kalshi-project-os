@@ -204,3 +204,38 @@ export const PAPER_DECISION_ENTRIES_TICKER_INDEX_DDL = `
 CREATE INDEX IF NOT EXISTS idx_paper_decision_entries_ticker
   ON paper_decision_entries (market_ticker);
 `;
+
+/**
+ * Advisory AI research draft ledger (Phase 5). Drafts are generated copilot
+ * artifacts that sit entirely outside the deterministic risk path: they never
+ * satisfy a risk check, never promote sources, briefs, theses, or settlement
+ * records, and never create paper entries. There are deliberately no verdict,
+ * stake, size, or PnL-shaped columns. Archive-only lifecycle: no deletes and
+ * no unarchive; archived rows remain as an audit trail.
+ */
+export const AI_RESEARCH_DRAFTS_DDL = `
+CREATE TABLE IF NOT EXISTS ai_research_drafts (
+  id TEXT PRIMARY KEY,
+  market_ticker TEXT NOT NULL,
+  market_id TEXT NOT NULL,
+  draft_type TEXT NOT NULL CHECK (draft_type IN (
+    'research_questions', 'source_checklist', 'brief_draft', 'thesis_critique',
+    'missing_info', 'skeptical_countercase'
+  )),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'archived')),
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  input_snapshot_json TEXT NOT NULL,
+  output_markdown TEXT NOT NULL,
+  output_json TEXT,
+  user_focus TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
+export const AI_RESEARCH_DRAFTS_TICKER_INDEX_DDL = `
+CREATE INDEX IF NOT EXISTS idx_ai_research_drafts_ticker
+  ON ai_research_drafts (market_ticker);
+`;

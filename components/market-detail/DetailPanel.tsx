@@ -3,15 +3,17 @@ import type { ReactElement } from 'react';
 import type { MarketDossier } from '@/lib/dossier/types';
 import type { NormalizedMarket } from '@/lib/markets/types';
 import type {
+  AiResearchDraftRecord,
   PaperDecisionEntryRecord,
   ResearchStateResponse,
 } from '@/lib/research-store/types';
 import { formatCents, formatCount, formatDateTime } from '@/lib/utils/format';
 
+import { AiResearchCopilotPanel } from './AiResearchCopilotPanel';
 import { ContractUnderstandingPanel } from './ContractUnderstandingPanel';
 import { PaperJournalPanel } from './PaperJournalPanel';
 import { ProbabilityPanel } from './ProbabilityPanel';
-import type { PaperJournalActions, ResearchActions } from './researchActions';
+import type { AiDraftActions, PaperJournalActions, ResearchActions } from './researchActions';
 import { ResearchBriefPanel } from './ResearchBriefPanel';
 import { RiskPanel } from './RiskPanel';
 import { SettlementVerificationPanel } from './SettlementVerificationPanel';
@@ -35,6 +37,12 @@ export interface DetailPanelProps {
   paperJournalError: string | null;
   /** Paper-journal mutation callbacks (simulated decision records only). */
   paperActions: PaperJournalActions;
+  /** AI drafts for the selected market, or null while loading/unavailable. */
+  aiDrafts: readonly AiResearchDraftRecord[] | null;
+  /** Plain-English ai-drafts API error, or null when none. */
+  aiDraftsError: string | null;
+  /** AI-draft mutation callbacks (advisory drafts only, outside the risk path). */
+  aiDraftActions: AiDraftActions;
 }
 
 interface KvItem {
@@ -84,6 +92,7 @@ function ResearchUnavailableSection({
  * in sequence — contract understanding, settlement verification (human record),
  * persisted research sources, research brief (derived plus the manual
  * editor), probability (derived plus the fair-range form), written thesis,
+ * the AI research copilot (advisory drafts only, outside the risk path),
  * deterministic risk verdict, the paper decision journal (simulated records
  * only) — followed by
  * the raw market numbers and data flags. Missing fields are labeled
@@ -100,6 +109,9 @@ export function DetailPanel({
   paperEntries,
   paperJournalError,
   paperActions,
+  aiDrafts,
+  aiDraftsError,
+  aiDraftActions,
 }: DetailPanelProps): ReactElement {
   if (dossier === null) {
     return (
@@ -199,6 +211,14 @@ export function DetailPanel({
           onSaveThesis={actions.saveThesis}
         />
       )}
+
+      <AiResearchCopilotPanel
+        key={`ai-drafts-${editorKey}`}
+        aiDrafts={aiDrafts}
+        aiDraftsError={aiDraftsError}
+        onGenerateDraft={aiDraftActions.generateDraft}
+        onArchiveDraft={aiDraftActions.archiveDraft}
+      />
 
       <RiskPanel evaluation={dossier.riskEvaluation} />
 

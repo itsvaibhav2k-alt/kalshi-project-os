@@ -20,6 +20,7 @@ const apiDir = path.join(projectRoot, 'app', 'api');
 const researchDir = path.join(apiDir, 'research');
 const paperJournalDir = path.join(apiDir, 'paper-journal');
 const researchStoreDir = path.join(projectRoot, 'lib', 'research-store');
+const aiResearchDir = path.join(projectRoot, 'lib', 'ai-research');
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 const MUTATION_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -75,7 +76,7 @@ describe('route-aware safety (app/api)', () => {
   const routeFiles = listRouteFiles();
 
   it('should find the expected route tree (markets plus research and paper-journal routes)', () => {
-    expect(routeFiles.length).toBeGreaterThanOrEqual(15);
+    expect(routeFiles.length).toBeGreaterThanOrEqual(17);
     expect(routeFiles.some((file) => relativePath(file) === 'app/api/markets/route.ts')).toBe(
       true,
     );
@@ -94,7 +95,7 @@ describe('route-aware safety (app/api)', () => {
 
   it('should export only GET, POST, or PATCH from routes under app/api/research', async () => {
     const researchRoutes = routeFiles.filter((file) => file.startsWith(researchDir + path.sep));
-    expect(researchRoutes.length).toBeGreaterThanOrEqual(10);
+    expect(researchRoutes.length).toBeGreaterThanOrEqual(12);
 
     for (const file of researchRoutes) {
       const methods = await exportedHttpMethods(file);
@@ -175,10 +176,12 @@ describe('route-aware safety (app/api)', () => {
   });
 });
 
-describe('content safety scans (app/api and lib/research-store)', () => {
-  const scannedFiles = [...walkFiles(apiDir), ...walkFiles(researchStoreDir)].filter((file) =>
-    file.endsWith('.ts'),
-  );
+describe('content safety scans (app/api, lib/research-store, and lib/ai-research)', () => {
+  const scannedFiles = [
+    ...walkFiles(apiDir),
+    ...walkFiles(researchStoreDir),
+    ...walkFiles(aiResearchDir),
+  ].filter((file) => file.endsWith('.ts'));
 
   it('should scan a non-empty set of implementation files', () => {
     expect(scannedFiles.length).toBeGreaterThanOrEqual(10);

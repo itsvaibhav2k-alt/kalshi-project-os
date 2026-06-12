@@ -1,7 +1,8 @@
 # Risk Engine
 
 Status: Phase 0 specification, plus the Phase 2 implementation-status, Phase 3
-input-status, and Phase 4 settlement-overlay records below.
+input-status, Phase 4 settlement-overlay, and Phase 5 AI-draft-isolation
+records below.
 Last updated: 2026-06-12
 
 The risk engine is the spine of Kalshi Project OS. It is deterministic: hard-coded rules decide
@@ -157,6 +158,31 @@ yields a negative edge and therefore SKIP — it is not treated as a NO-side buy
 signal. The UI labels the value "Expected edge (YES side)". NO-side framing is
 deliberately deferred to the paper-trading phase, where side selection becomes a
 journaled decision rather than a display convention.
+
+## Phase 5 status (2026-06-12): engine byte-unchanged; AI drafts are explicitly OUTSIDE risk input
+
+Phase 5 added the AI Research Copilot — an advisory draft layer
+(`lib/ai-research` + the `ai_research_drafts` ledger) — with **zero changes**
+to `lib/risk`. AI drafts are not risk inputs and never become risk inputs by
+existing:
+
+- The engine still reads only its deterministic inputs: contract understanding
+  (with the Phase 4 settlement-verification overlay applied), currently
+  accepted research sources, the human-reviewed brief's confidence, the
+  human-entered fair probability range, a ready written thesis, and market
+  microstructure (spread, volume, open interest, prices). Nothing in that list
+  changed.
+- AI drafts never enter the `RiskCandidate`, the research summary, or the
+  persisted research snapshot that `lib/dossier` composes from. Creating
+  drafts — all six kinds, on any market — changes neither the verdict nor the
+  reasons, asserted by dedicated isolation tests
+  (`tests/ai-research-risk-isolation.test.ts`).
+- Human-reviewed research remains the only research that counts. A draft
+  satisfies nothing on its own: a market still reaches anything beyond SKIP
+  only after a human does the actual work (accepting sources, reviewing the
+  brief, entering a fair range, readying a thesis, verifying settlement)
+  through the existing human loop. The draft layer can at most help the human
+  think; it cannot speak to the engine.
 
 ## Verdicts
 

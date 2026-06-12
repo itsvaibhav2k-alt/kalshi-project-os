@@ -32,8 +32,9 @@ must keep that true.
 - Do NOT create new top-level directories without first updating `docs/ARCHITECTURE.md` to
   define the directory's purpose and boundaries.
 - Planned directories: `lib/platforms`, `lib/risk`, `lib/paper`, `lib/research`,
-  `lib/strategies`, `lib/wallet-intelligence`, `lib/backtesting`, `lib/simulation`,
-  `lib/relationship-graph`, `lib/telemetry`, `lib/calibration`, `lib/db`, `scripts`, `tests`.
+  `lib/ai-research`, `lib/strategies`, `lib/wallet-intelligence`, `lib/backtesting`,
+  `lib/simulation`, `lib/relationship-graph`, `lib/telemetry`, `lib/calibration`, `lib/db`,
+  `scripts`, `tests`.
   Stay inside this layout unless ARCHITECTURE.md is updated first.
 
 ## Conflict resolution

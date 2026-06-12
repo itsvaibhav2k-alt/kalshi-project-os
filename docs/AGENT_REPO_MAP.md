@@ -1,7 +1,7 @@
 # AGENT_REPO_MAP.md
 
 Status: compact codebase map for Claude/Hermes agents
-Date: 2026-06-12 (updated through Phase 4)
+Date: 2026-06-12 (updated through Phase 5)
 Purpose: reduce repeated full-repo scanning. Read this after `CLAUDE.md` and before planning implementation work. This map is a navigation aid, not a substitute for reading the exact files you will edit.
 
 ## Mission and safety invariants
@@ -77,11 +77,23 @@ Settlement verification + paper decision journal:
 - `/api/paper-journal/**` is the second and last V1 mutation namespace
 - shared server market loader `app/api/markets/loadMarkets.ts` with the read-only `KALSHI_MARKETS_SOURCE=fixture` toggle and the synthetic `SYNTH-PAPER-DEMO` fixture market for end-to-end smoke
 
+### Phase 5
+
+AI Research Copilot — draft-only advisory analyst layer, entirely outside the risk path:
+
+- `ai_research_drafts` ledger (migration v3): six draft kinds (`research_questions`, `source_checklist`, `brief_draft`, `thesis_critique`, `missing_info`, `skeptical_countercase`), archive-only lifecycle, NO verdict/stake/PnL/approval columns (PRAGMA column-audit test)
+- deterministic local fallback provider only (`local_deterministic / phase5_fallback`, prompt version `phase5.v1`); no LLM keys, no network, no AI env vars
+- drafts never satisfy risk checks, never promote sources/briefs/theses/settlement records, never create paper entries; invisible to research summaries and dossier snapshots
+- routes confined to `/api/research/[ticker]/ai-drafts` (GET/POST) + `/[draftId]` (archive-only PATCH); `AiResearchCopilotPanel` between ThesisPanel and RiskPanel
+- `lib/risk` byte-unchanged; isolation proven by `tests/ai-research-risk-isolation.test.ts`
+
 Current live behavior: a market reaches `PAPER_TRADE` only after the full human
 loop (accepted sources, human-reviewed brief, fair range with sufficient edge,
-ready thesis, AND a human-verified settlement record). Without that work, live
-markets still SKIP — settlement unverified and/or resolution clarity ambiguous.
-Deferred: paper PnL, NO-side entries, settlement outcome tracking, calibration.
+ready thesis, AND a human-verified settlement record). AI drafts change none of
+that — human-reviewed research remains the only research that counts. Without
+that work, live markets still SKIP — settlement unverified and/or resolution
+clarity ambiguous. Deferred: paper PnL, NO-side entries, settlement outcome
+tracking, calibration, real LLM providers, automated source discovery.
 
 ## Module map
 
@@ -114,6 +126,8 @@ Current route groups:
 - `PATCH /api/research/[ticker]/thesis/[thesisId]`
 - `GET/POST /api/research/[ticker]/settlement-source` (GET → `{settlementSources, verifiedSettlementSource}`; POST defaults status `draft`)
 - `PATCH /api/research/[ticker]/settlement-source/[settlementSourceId]` (transition into `human_verified` re-runs the strict validator → 400 on missing url/authorityType/rationale)
+- `GET/POST /api/research/[ticker]/ai-drafts` (Phase 5; GET → 200 `{aiDrafts}` newest-first; POST body `{draftType, userFocus?}` → compose dossier → fallback provider → 201 `{aiDraft}`; 400 invalid body/ticker, 404 unknown market; writes ONLY `ai_research_drafts`)
+- `PATCH /api/research/[ticker]/ai-drafts/[draftId]` (body exactly `{status: 'archived'}` → 200 `{aiDraft}`; any other payload → 400; unknown id → 404)
 
 ### `app/api/paper-journal/**`
 
@@ -148,7 +162,8 @@ Main dossier UI.
 - `ThesisPanel.tsx`: thesis editor and ready-for-risk action.
 - `RiskPanel.tsx`, `RiskCheckList.tsx`: deterministic verdict display only.
 - `PaperJournalPanel.tsx`: Phase 4 paper decision journal UI (after the risk panel); "Log paper decision" button enabled ONLY on a `PAPER_TRADE` verdict (rendered disabled otherwise, never hidden); entries list + archive control; paper-only marketplace-free copy.
-- `researchActions.ts`: client-side DTO/action helpers for research, settlement, and paper-journal forms (`ResearchActions`, `PaperJournalActions`).
+- `AiResearchCopilotPanel.tsx`: Phase 5 draft-only copilot UI (between ThesisPanel and RiskPanel); six generate buttons + optional focus input; draft cards labeled advisory-only/outside-risk-path with per-card warnings; markdown rendered as plain text via `white-space: pre-wrap` (NO `dangerouslySetInnerHTML`); archive control on `draft` status only; no approve/promote/auto-fill CTAs.
+- `researchActions.ts`: client-side DTO/action helpers for research, settlement, paper-journal, and AI-draft forms (`ResearchActions`, `PaperJournalActions`, `AiDraftActions`).
 
 Do not add real trade/order CTAs here. Paper journal UI uses paper-only language and always obeys the risk verdict; the server re-validates regardless.
 
@@ -237,18 +252,30 @@ Pure paper-decision eligibility (Phase 4). No persistence, routes, clock, or env
 
 Client-safe (type-only imports + pure logic) — imported by `PaperJournalPanel`.
 
+### `lib/ai-research/`
+
+Phase 5 advisory draft generation, entirely outside the risk path. No network, no env reads, no keys; covered by the forbidden-token safety scan (prompt/template text included).
+
+- `types.ts`: `AiResearchDraftInput` (draftType, market, dossier, researchState, userFocus, nowIso), `AiResearchDraftResult` (provider, model, promptVersion, outputMarkdown, outputJson?), `AiResearchProvider` interface.
+- `prompts.ts`: `PROMPT_VERSION = 'phase5.v1'`, system-posture text, per-kind section skeletons (shared by the fallback now, real providers later).
+- `fallbackProvider.ts`: deterministic templating from the dossier + research state (`FALLBACK_PROVIDER_NAME = 'local_deterministic'`, `FALLBACK_MODEL_NAME = 'phase5_fallback'`). No invented facts: synthesizes only what the inputs contain; absent inputs are labeled missing. Advisory vocabulary only.
+- `provider.ts`: `getAiResearchProvider()` → fallback (extension point for future providers; no env read in Phase 5).
+
+Boundary: emits draft text only — never verdicts, records, or paper entries. `lib/risk`/`lib/dossier` never import it.
+
 ### `lib/research-store/`
 
-Server-only SQLite persistence for research/thesis/settlement/paper-journal state (Phases 3–4). One exception to "server-only": `snapshot.ts` is pure mapping with type-only imports and is also used client-side.
+Server-only SQLite persistence for research/thesis/settlement/paper-journal/AI-draft state (Phases 3–5). One exception to "server-only": `snapshot.ts` is pure mapping with type-only imports and is also used client-side.
 
 - `db.ts`: lazy DB open, WAL/busy timeout, `KALSHI_DATA_DIR`, global connection cache. Only file allowed to read the env override or import/open the database.
 - `schema.ts`: DDL.
-- `migrations.ts`: versioned migration registry + ledger (v1 Phase 3, v2 Phase 4; append-only).
-- `types.ts`: DB/API/store types and units convention. Phase 4: `SETTLEMENT_AUTHORITY_TYPES`, `SettlementVerificationStatus` (distinct from lib/understanding's `SettlementSourceStatus`), `SettlementSourceRow/Record`, `VerifiedSettlementSummary`, `PAPER_ENTRY_SIDES/STATUSES/RISK_VERDICTS`, `PaperDecisionEntryRow/Record`.
-- `validation.ts`: source/brief/probability/thesis validators, `validateThesisReady`; Phase 4: `validateSettlementSourceInput` (`human_verified` requires title+url+authorityType+rationale), `validatePaperEntryInput`.
+- `migrations.ts`: versioned migration registry + ledger (v1 Phase 3, v2 Phase 4, v3 Phase 5; append-only).
+- `types.ts`: DB/API/store types and units convention. Phase 4: `SETTLEMENT_AUTHORITY_TYPES`, `SettlementVerificationStatus` (distinct from lib/understanding's `SettlementSourceStatus`), `SettlementSourceRow/Record`, `VerifiedSettlementSummary`, `PAPER_ENTRY_SIDES/STATUSES/RISK_VERDICTS`, `PaperDecisionEntryRow/Record`. Phase 5: `AI_RESEARCH_DRAFT_TYPES` (6 kinds), `AI_RESEARCH_DRAFT_STATUSES`, `AiResearchDraftRow/Record`.
+- `validation.ts`: source/brief/probability/thesis validators, `validateThesisReady`; Phase 4: `validateSettlementSourceInput` (`human_verified` requires title+url+authorityType+rationale), `validatePaperEntryInput`; Phase 5: `validateAiDraftRequest` (draftType ∈ enum, userFocus ≤ 500 chars), `validateAiDraftRecordInput`.
 - `sources.ts`, `briefs.ts`, `probabilityEstimates.ts`, `theses.ts`: CRUD.
 - `settlementSources.ts`: create/list/get/update + `getActiveVerifiedSettlementSource` (latest row with CURRENT status `human_verified`, `created_at DESC, rowid DESC`; drafts/rejected never count). Verification field requirements re-checked at the store layer.
 - `paperJournal.ts`: `createPaperEntry` (re-validates verdict/side/snapshots — defense in depth; status always `logged`), `listPaperEntries`, `listAllPaperEntries`, `getPaperEntryById`, `archivePaperEntry` (only `logged` → `archived`).
+- `aiDrafts.ts`: Phase 5 draft CRUD — `createAiDraft` (status always `'draft'`), `listAiDrafts` (newest first: `created_at DESC, rowid DESC`), `getAiDraftById`, `archiveAiDraft` (null for unknown id; error if not `'draft'`, mirroring `archivePaperEntry`). No delete function; no read path feeds `summary.ts`/`snapshot.ts`.
 - `snapshot.ts`: `toPersistedResearchSnapshot(state)` — shared client/server mapping to the dossier snapshot DTO (store → dossier-types import direction is allowed; reverse is forbidden).
 - `summary.ts`: recomputed per-ticker summary flags incl. `verifiedSettlementSource`; ticker UNION covers all per-market tables incl. `market_settlement_sources`.
 
@@ -261,6 +288,7 @@ Existing tables:
 - `theses`
 - `market_settlement_sources` (Phase 4)
 - `paper_decision_entries` (Phase 4; CHECKs: side `YES` only, verdict `PAPER_TRADE` only, status `logged|archived`, fraction bounds; NO stake/contracts/PnL/lifecycle/outcome columns)
+- `ai_research_drafts` (Phase 5; CHECKs: `draft_type` in the six kinds, status `draft|archived`; NO verdict/stake/PnL/approval/review columns — PRAGMA-audited; index `idx_ai_research_drafts_ticker`)
 
 No deletes: reject/archive instead.
 
@@ -278,7 +306,7 @@ Important suites:
 - `tests/phase2-integration.test.ts`: Phase 2 pipeline and purity checks.
 - `tests/phase3-integration.test.ts`: persisted research → dossier/risk integration.
 - `tests/safety-routes.test.ts`: route/mutation safety, forbidden trading paths, token-pattern carve-out pinning, purity/import scans.
-- `tests/research-store-db.test.ts`: DB/migration behavior (ledger versions [1, 2]).
+- `tests/research-store-db.test.ts`: DB/migration behavior (ledger versions [1, 2, 3]).
 - `tests/research-store-validation.test.ts`: validators incl. settlement/paper-entry validators.
 - `tests/research-store-crud.test.ts`: source/brief/probability/thesis store behavior.
 - `tests/research-api.test.ts`: API route validation and responses.
@@ -286,6 +314,10 @@ Important suites:
 - `tests/settlement-overlay.test.ts`: overlay purity/reference semantics; ambiguous-market independence; the first real-pipeline `PAPER_TRADE` through `buildMarketDossierWithResearch`; `toPersistedResearchSnapshot` mapping.
 - `tests/paper-journal-store.test.ts`: store rules, YES-only, boundary fractions, archive lifecycle, PRAGMA column audit (no PnL-shaped columns), `evaluatePaperEligibility`.
 - `tests/paper-journal-api.test.ts`: server-side eligibility (409 paths), full 201 snapshot assertions, archive PATCH, method allowlists; uses mkdtemp `KALSHI_DATA_DIR` + `KALSHI_MARKETS_SOURCE=fixture` stubbed/restored.
+- `tests/ai-research-store.test.ts` (Phase 5): migration v3 table creation, PRAGMA column audit (no verdict/stake/PnL-shaped columns), all six draft kinds persist, archive lifecycle (double-archive errors), no delete export.
+- `tests/ai-research-provider.test.ts` (Phase 5): all six kinds produce structured markdown; determinism (same input ⇒ identical output); state-sensitivity (missing settlement/sources/fair-range/thesis each surface); banned-vocabulary regex over every output; exact provider/model/promptVersion labels.
+- `tests/ai-research-api.test.ts` (Phase 5): GET/POST/PATCH behavior, 400/404 paths, POST works with no AI env vars, non-mutation proof (research state + settlement + paper entries deep-equal before/after POSTs).
+- `tests/ai-research-risk-isolation.test.ts` (Phase 5 core safety proof): SKIP and PAPER_TRADE verdicts/reasons deep-equal before and after creating drafts; `toPersistedResearchSnapshot` unchanged by drafts.
 - `tests/client.test.ts`, `normalize.test.ts`, `filters.test.ts`, `fixture-parsing.test.ts`: Kalshi ingestion/scanner basics; fixture parsing also covers `loadCurrentMarkets` fixture mode and the `SYNTH-PAPER-DEMO` synthetic market.
 
 ## Current safety-test expectations
@@ -295,8 +327,9 @@ Important suites:
 - No PUT/DELETE/HEAD/OPTIONS anywhere.
 - No mutations outside those two namespaces unless explicitly approved in a future phase and tests updated.
 - No route path may contain trading/account/auth/wallet/buy/sell/trade/portfolio/position segments (`paper-journal`, `settlement-source`, `entries`, `[entryId]`, `[settlementSourceId]` are verified clean).
-- Forbidden-token content scan over `app/api/**` and `lib/research-store/**` (comments stripped, SQL `ORDER BY` excepted): `/\b(order|buy|sell|auth(?!orit)|wallet|account)/i`. The human-approved carve-out permits EXACTLY `authority`, `authorities`, `authority_type`, `authoritative`; `auth`, `authentication`, `authorization`, `authToken`, `authHeader`, `auth_key` still match. Unit tests pin both word lists — do not widen.
-- Practical writing rule for those directories: avoid order/buy/sell/account/wallet/position/portfolio and non-authority `auth*` words even in comments (e.g. never "in order to").
+- Route-count minimums (Phase 5): ≥ 17 route files total; ≥ 12 under `/api/research/**`; ≥ 4 under `/api/paper-journal/**`.
+- Forbidden-token content scan over `app/api/**`, `lib/research-store/**`, AND `lib/ai-research/**` (Phase 5 extension — prompt/template text included; comments stripped, SQL `ORDER BY` excepted): `/\b(order|buy|sell|auth(?!orit)|wallet|account)/i`. The human-approved carve-out permits EXACTLY `authority`, `authorities`, `authority_type`, `authoritative`; `auth`, `authentication`, `authorization`, `authToken`, `authHeader`, `auth_key` still match. Unit tests pin both word lists — do not widen.
+- Practical writing rule for those directories (now including `lib/ai-research/**`): avoid order/buy/sell/account/wallet/position/portfolio and non-authority `auth*` words even in comments (e.g. never "in order to").
 - `better-sqlite3` import confined to `lib/research-store`.
 - No browser storage: `localStorage`, `sessionStorage`, `indexedDB`.
 
@@ -310,6 +343,13 @@ Important suites:
 - The `auth(?!orit)` carve-out exists so settlement code can say `authority_type`; everything else auth-shaped still fails the safety scan (see safety-test expectations above).
 - Probabilities are fractions in [0, 1] in storage/logic; cents only at display time. Timestamps are always injected by callers.
 - `PAPER_TRADE` contains "trade": fine inside file contents, forbidden in route path segments — keep it out of directory names.
+
+## Phase 5 gotchas (as built)
+
+- Provenance labels are exact and test-pinned: `provider: 'local_deterministic'`, `model: 'phase5_fallback'`, `promptVersion: 'phase5.v1'` — change them only with matching provider-test updates.
+- AI drafts are invisible to `summary.ts`, `snapshot.ts`, `ResearchStateResponse`, and `listResearchTickers`; they load only via the dedicated `GET /api/research/[ticker]/ai-drafts`. Do not add them to summaries/snapshots — that would put them on the risk-input path.
+- Archive-only lifecycle: `draft` → `archived`, no unarchive, no delete; `archiveAiDraft` errors (not idempotent success) on an already-archived row.
+- Posture/prompt text in `lib/ai-research/**` is inside the forbidden-token scan: copy is written to avoid scanned tokens ("sequence" not "order", "so that" not "in order to", no buy/sell/wallet/account/non-authority auth words) — keep any edits to prompt/template strings compliant.
 
 ## Do-not-touch list without explicit approval
 

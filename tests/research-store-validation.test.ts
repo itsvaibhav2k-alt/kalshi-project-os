@@ -6,7 +6,10 @@ import type {
   ThesisRecord,
 } from '@/lib/research-store/types';
 import {
+  AI_DRAFT_USER_FOCUS_MAX_LENGTH,
   deriveBriefState,
+  validateAiDraftRecordInput,
+  validateAiDraftRequest,
   validateBriefPayload,
   validateFairRange,
   validatePaperEntryInput,
@@ -121,6 +124,26 @@ function verifiedSettlementPayload(): Record<string, unknown> {
     status: 'human_verified',
     verificationRationale: 'URL matches the resolution text in the contract rules.',
     notes: 'Checked against the market page.',
+  };
+}
+
+function validAiDraftRequestPayload(): Record<string, unknown> {
+  return {
+    draftType: 'research_questions',
+    userFocus: 'settlement ambiguity',
+  };
+}
+
+function validAiDraftRecordPayload(): Record<string, unknown> {
+  return {
+    provider: 'local_deterministic',
+    model: 'phase5_fallback',
+    promptVersion: 'phase5.v1',
+    inputSnapshotJson: JSON.stringify({ ticker: TICKER }),
+    outputMarkdown: '## Research questions\n\n- What does the resolution source say?',
+    status: 'draft',
+    outputJson: null,
+    userFocus: null,
   };
 }
 
@@ -1015,5 +1038,248 @@ describe('validatePaperEntryInput', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('validateAiDraftRequest', () => {
+  it('should pass when draftType is valid and userFocus is a short string', () => {
+    const result = validateAiDraftRequest(validAiDraftRequestPayload());
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should pass for every draft kind when userFocus is omitted', () => {
+    const kinds = [
+      'research_questions',
+      'source_checklist',
+      'brief_draft',
+      'thesis_critique',
+      'missing_info',
+      'skeptical_countercase',
+    ];
+
+    for (const kind of kinds) {
+      const result = validateAiDraftRequest({ draftType: kind });
+
+      expect(result.ok).toBe(true);
+    }
+  });
+
+  it('should pass when userFocus is null', () => {
+    const result = validateAiDraftRequest({ draftType: 'missing_info', userFocus: null });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should pass when userFocus is exactly the maximum length', () => {
+    const payload = {
+      draftType: 'brief_draft',
+      userFocus: 'a'.repeat(AI_DRAFT_USER_FOCUS_MAX_LENGTH),
+    };
+
+    const result = validateAiDraftRequest(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should fail when userFocus is one character over the maximum length', () => {
+    const payload = {
+      draftType: 'brief_draft',
+      userFocus: 'a'.repeat(AI_DRAFT_USER_FOCUS_MAX_LENGTH + 1),
+    };
+
+    const result = validateAiDraftRequest(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('userFocus'))).toBe(true);
+  });
+
+  it('should fail when userFocus is not a string', () => {
+    const result = validateAiDraftRequest({ draftType: 'brief_draft', userFocus: 42 });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('userFocus'))).toBe(true);
+  });
+
+  it('should fail when draftType is not in the union', () => {
+    const result = validateAiDraftRequest({ draftType: 'trade_idea' });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('draftType'))).toBe(true);
+  });
+
+  it('should fail when draftType is missing', () => {
+    const result = validateAiDraftRequest({ userFocus: 'anything' });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when payload is not an object', () => {
+    const result = validateAiDraftRequest('nonsense');
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('should fail when payload is null', () => {
+    const result = validateAiDraftRequest(null);
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('validateAiDraftRecordInput', () => {
+  it('should pass when all required fields are present and status is draft', () => {
+    const result = validateAiDraftRecordInput(validAiDraftRecordPayload());
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should pass when status is archived', () => {
+    const payload = { ...validAiDraftRecordPayload(), status: 'archived' };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should pass when outputJson is a string', () => {
+    const payload = {
+      ...validAiDraftRecordPayload(),
+      outputJson: JSON.stringify({ sections: [] }),
+    };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should pass when userFocus is a string within the maximum length', () => {
+    const payload = {
+      ...validAiDraftRecordPayload(),
+      userFocus: 'a'.repeat(AI_DRAFT_USER_FOCUS_MAX_LENGTH),
+    };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should fail when provider is missing', () => {
+    const payload = validAiDraftRecordPayload();
+    delete payload.provider;
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('provider'))).toBe(true);
+  });
+
+  it('should fail when model is whitespace only', () => {
+    const payload = { ...validAiDraftRecordPayload(), model: '   ' };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('model'))).toBe(true);
+  });
+
+  it('should fail when promptVersion is missing', () => {
+    const payload = validAiDraftRecordPayload();
+    delete payload.promptVersion;
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('promptVersion'))).toBe(true);
+  });
+
+  it('should fail when inputSnapshotJson is missing', () => {
+    const payload = validAiDraftRecordPayload();
+    delete payload.inputSnapshotJson;
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('inputSnapshotJson'))).toBe(true);
+  });
+
+  it('should fail when outputMarkdown is empty', () => {
+    const payload = { ...validAiDraftRecordPayload(), outputMarkdown: '' };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('outputMarkdown'))).toBe(true);
+  });
+
+  it('should fail when status is not in the union', () => {
+    const payload = { ...validAiDraftRecordPayload(), status: 'approved' };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('status'))).toBe(true);
+  });
+
+  it('should fail when status is missing', () => {
+    const payload = validAiDraftRecordPayload();
+    delete payload.status;
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when outputJson is a number', () => {
+    const payload = { ...validAiDraftRecordPayload(), outputJson: 42 };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('outputJson'))).toBe(true);
+  });
+
+  it('should fail when userFocus is over the maximum length', () => {
+    const payload = {
+      ...validAiDraftRecordPayload(),
+      userFocus: 'a'.repeat(AI_DRAFT_USER_FOCUS_MAX_LENGTH + 1),
+    };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes('userFocus'))).toBe(true);
+  });
+
+  it('should fail when userFocus is not a string', () => {
+    const payload = { ...validAiDraftRecordPayload(), userFocus: { text: 'focus' } };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('should fail when payload is not an object', () => {
+    const result = validateAiDraftRecordInput(42);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('should collect multiple errors when several rules fail at once', () => {
+    const payload = {
+      provider: '',
+      model: '',
+      status: 'approved',
+      outputJson: 42,
+    };
+
+    const result = validateAiDraftRecordInput(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThanOrEqual(5);
   });
 });
