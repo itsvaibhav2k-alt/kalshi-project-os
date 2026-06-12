@@ -64,6 +64,15 @@ export type ThesisStatus = (typeof THESIS_STATUSES)[number];
 export const CONFIDENCE_LEVELS = ['low', 'medium', 'high'] as const;
 export type Confidence = (typeof CONFIDENCE_LEVELS)[number];
 
+/**
+ * Result of a store write: ok with the persisted record, or rejected with at
+ * least one error message. Store functions validate and reject; they do not
+ * throw for validation failures.
+ */
+export type StoreResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; errors: string[] };
+
 /** Raw market_sources row exactly as stored in SQLite (snake_case columns). */
 export interface MarketSourceRow {
   id: string;
